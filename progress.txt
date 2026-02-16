@@ -1,0 +1,61 @@
+# The Room — Build Progress
+
+## Phase 0: Setup
+- [x] Docker installed and running (2026-02-15)
+- [x] EigenCloud CLI installed (2026-02-15)
+- [x] EigenAI API key obtained — grant-based auth via MetaMask (2026-02-15)
+- [x] EigenAI test call successful (2026-02-15)
+- [ ] EigenCompute hello-world deployed — blocked on container registry
+
+## Phase 1: Scaffold
+- [x] .gitignore, .env, .env.example created (2026-02-15)
+- [x] server/ project initialized (package.json, tsconfig, Dockerfile) (2026-02-15)
+- [x] SQLite schema + DB connection working (2026-02-15)
+- [x] Express server starts and responds to health check (2026-02-15)
+- [x] client/ project initialized (Next.js) (2026-02-15)
+
+## Phase 2: Negotiation Protocol
+- [x] POST /negotiate/create — creates room, returns room ID (2026-02-15)
+- [x] POST /negotiate/join — second party joins with room ID (2026-02-15)
+- [x] POST /negotiate/offer — accepts plain English (AI parses) OR structured JSON (2026-02-15)
+- [x] GET /negotiate/status/:id — returns negotiation state + rounds (2026-02-15)
+- [x] Negotiation rounds work (3-5 rounds, convergence detection) (2026-02-15)
+- [x] Service deal produces structured contract (2026-02-15)
+- [x] Conditional deal produces contract with condition + resolution date (2026-02-15)
+
+## Phase 3: Contract Engine
+- [x] GET /contract/:id — returns contract details (2026-02-15)
+- [x] POST /contract/:id/resolve — fetches external data, AI evaluates, attested verdict (2026-02-16)
+- [x] Condition resolution works for crypto price conditions (CoinGecko) (2026-02-16)
+- [ ] Condition resolution works for event-based conditions (news APIs) — code written, not yet tested with live news
+- [x] Attestation record produced for each resolution (2026-02-16)
+
+## Phase 4: Reputation System
+- [x] Reputation scoring after each negotiation (2026-02-15)
+- [x] GET /reputation/:wallet — returns reputation record (2026-02-15)
+- [ ] Reputation factors into AI negotiation prompts — partial (score passed but not heavily weighted)
+
+## Phase 5: OpenClaw Skill
+- [x] skill/skill.md written with full API docs (2026-02-15)
+- [ ] Agent can create + complete a negotiation via skill instructions — not tested end-to-end
+
+## Phase 6: Website
+- [x] Home/Dashboard page (2026-02-15)
+- [x] Negotiate page (wallet connect, deal type selection, plain English input) (2026-02-15)
+- [x] Negotiation round-by-round polling view (2026-02-15)
+- [x] My Contracts page (active, pending, resolved) (2026-02-15)
+- [x] My Profile page (reputation, history) (2026-02-15)
+- [x] Verify page (paste attestation ID, see proof) (2026-02-15)
+
+## Phase 7: Deployment
+- [x] Docker image builds and runs locally (2026-02-16)
+- [x] Deployed to EigenCompute — App ID: 0x28B7Cbf332E7e1711C11bf1472114b76793B37A8, IP: 136.109.58.88 (2026-02-16)
+- [x] TEE attestation verified on live deployment (2026-02-16)
+- [x] Website deployed — https://the-room-smoky.vercel.app (2026-02-16)
+
+## Phase 8: Polish + Submit
+- [ ] Edge cases handled (timeouts, errors, disconnection)
+- [ ] UI cleaned up
+- [x] README written (2026-02-16)
+- [ ] Demo video recorded
+- [ ] Submitted via Google Form
