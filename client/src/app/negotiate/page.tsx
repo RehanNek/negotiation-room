@@ -1,275 +1,427 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { Suspense, useCallback, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import FlowStepper from '@/components/FlowStepper';
+import InfoCallout from '@/components/InfoCallout';
+import NegotiationRoom, { type NegotiationCompletion } from '@/components/NegotiationRoom';
 import WalletConnect from '@/components/WalletConnect';
-import NegotiationRoom from '@/components/NegotiationRoom';
 import { api } from '@/lib/api';
+import { canAdvanceFromSetup, resolveInitialStep, resolveStepAfterPath } from '@/lib/flow';
+import type { DealType } from '@/lib/types';
 
-type Step = 'connect' | 'choose' | 'create' | 'join' | 'negotiate';
+const FLOW_STEPS = [
+  { id: 'identity', label: 'Identity', description: 'Establish authenticated session.' },
+  { id: 'path', label: 'Path', description: 'Choose create or join flow.' },
+  { id: 'setup', label: 'Setup', description: 'Define private constraints and shared rules.' },
+  { id: 'live', label: 'Live Room', description: 'Reach agreement without a middleman.' },
+] as const;
 
-export default function NegotiatePage() {
+type WizardStep = (typeof FLOW_STEPS)[number]['id'];
+type NegotiationPath = 'create_custom' | 'join_existing';
+
+function parseOptionalConstraints(rawText: string): Record<string, unknown> {
+  if (!rawText.trim()) return {};
+  try {
+    return JSON.parse(rawText) as Record<string, unknown>;
+  } catch {
+    return { note: rawText.trim() };
+  }
+}
+
+function persistPrivateInputs(roomId: string, wallet: string, inputs: Record<string, unknown>) {
+  if (typeof window === 'undefined') return;
+  const walletKey = wallet.trim().toLowerCase();
+  if (!walletKey) return;
+  localStorage.setItem(`private_inputs:${roomId}:${walletKey}`, JSON.stringify(inputs));
+}
+
+function NegotiateWorkspace() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const roomFromQuery = useMemo(() => (searchParams.get('room') || '').trim(), [searchParams]);
+
   const [wallet, setWallet] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>('connect');
+  const [step, setStep] = useState<WizardStep>('identity');
+  const [path, setPath] = useState<NegotiationPath | null>(null);
   const [negotiationId, setNegotiationId] = useState('');
+  const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
+  const [finalNote, setFinalNote] = useState('');
 
-  // Create form state
-  const [dealType, setDealType] = useState<'service' | 'conditional'>('service');
+  const [dealType, setDealType] = useState<DealType>('service');
   const [category, setCategory] = useState('');
   const [condition, setCondition] = useState('');
   const [dataSource, setDataSource] = useState('coingecko');
   const [resolutionDate, setResolutionDate] = useState('');
   const [constraints, setConstraints] = useState('');
 
-  // Join form state
-  const [joinRoomId, setJoinRoomId] = useState('');
+  const [joinRoomId, setJoinRoomId] = useState(roomFromQuery);
   const [joinConstraints, setJoinConstraints] = useState('');
 
-  const handleConnect = useCallback((addr: string) => {
-    setWallet(addr || null);
-    if (addr) setStep('choose');
-    else setStep('connect');
-  }, []);
+  const hasSetupInputs = useMemo(() => {
+    if (!path) return false;
+    if (path === 'create_custom') return category.trim().length > 0;
+    if (path === 'join_existing') return joinRoomId.trim().length > 0;
+    return true;
+  }, [category, joinRoomId, path]);
 
-  async function handleCreate() {
+  const handleConnect = useCallback((address: string) => {
+    const normalized = address || null;
+    setWallet(normalized);
+    setFinalNote('');
     setError('');
-    if (!category.trim()) { setError('Category is required'); return; }
+
+    if (normalized) {
+      if (roomFromQuery) {
+        setJoinRoomId((prev) => prev || roomFromQuery);
+        setPath('join_existing');
+        setStep('setup');
+      } else {
+        setStep(resolveInitialStep(true));
+      }
+    } else {
+      setStep('identity');
+      setPath(null);
+      setNegotiationId('');
+    }
+  }, [roomFromQuery]);
+
+  async function handleCreateCustom() {
+    if (!wallet) {
+      setError('Connect a wallet first.');
+      setStep('identity');
+      return;
+    }
+
+    if (!canAdvanceFromSetup(path || 'create_custom', hasSetupInputs)) {
+      setError('Category is required for new room creation.');
+      return;
+    }
+
+    setWorking(true);
+    setError('');
+    setFinalNote('');
 
     try {
-      const params: Record<string, any> = {};
+      const params: Record<string, unknown> = {};
+      const privateInputs = parseOptionalConstraints(constraints);
       if (dealType === 'conditional') {
-        params.condition = condition;
+        params.condition = condition || 'Bitcoin closes above 100000 USD by the resolution date.';
         params.data_source = dataSource;
-        params.resolution_date = resolutionDate;
-      }
-
-      let parsedConstraints = {};
-      if (constraints.trim()) {
-        try { parsedConstraints = JSON.parse(constraints); }
-        catch { parsedConstraints = { raw: constraints }; }
+        params.resolution_date = resolutionDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       }
 
       const result = await api.createNegotiation({
         deal_type: dealType,
         category: category.trim(),
         params,
-        wallet_address: wallet!,
-        constraints: parsedConstraints,
+        constraints: privateInputs,
       });
 
+      persistPrivateInputs(result.room_id, wallet, privateInputs);
       setNegotiationId(result.room_id);
-      setStep('negotiate');
-    } catch (err: any) {
-      setError(err.message);
+      setStep('live');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create room');
+    } finally {
+      setWorking(false);
     }
   }
 
-  async function handleJoin() {
+  async function handleJoinExisting() {
+    if (!wallet) {
+      setError('Connect a wallet first.');
+      setStep('identity');
+      return;
+    }
+
+    if (!canAdvanceFromSetup(path || 'join_existing', hasSetupInputs)) {
+      setError('Room ID is required.');
+      return;
+    }
+
+    setWorking(true);
     setError('');
-    if (!joinRoomId.trim()) { setError('Room ID is required'); return; }
+    setFinalNote('');
 
     try {
-      let parsedConstraints = {};
-      if (joinConstraints.trim()) {
-        try { parsedConstraints = JSON.parse(joinConstraints); }
-        catch { parsedConstraints = { raw: joinConstraints }; }
-      }
-
+      const roomId = joinRoomId.trim();
+      const privateInputs = parseOptionalConstraints(joinConstraints);
       await api.joinNegotiation({
-        room_id: joinRoomId.trim(),
-        wallet_address: wallet!,
-        constraints: parsedConstraints,
+        room_id: roomId,
+        constraints: privateInputs,
       });
 
-      setNegotiationId(joinRoomId.trim());
-      setStep('negotiate');
-    } catch (err: any) {
-      setError(err.message);
+      persistPrivateInputs(roomId, wallet, privateInputs);
+      setNegotiationId(roomId);
+      setStep('live');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to join room');
+    } finally {
+      setWorking(false);
     }
+  }
+
+  async function handleCompletion(completion: NegotiationCompletion) {
+    if (!wallet) return;
+
+    if (completion.status === 'deal') {
+      let contractId = completion.contractId;
+
+      if (!contractId) {
+        try {
+          const contracts = await api.getContractsByWallet(wallet);
+          const match = contracts
+            .filter((contract) => contract.negotiation_id === completion.negotiationId)
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+          contractId = match?.id;
+        } catch {
+          contractId = undefined;
+        }
+      }
+
+      const target = contractId
+        ? `/contracts?from=deal&focus=${encodeURIComponent(contractId)}`
+        : '/contracts?from=deal';
+      router.push(target);
+      return;
+    }
+
+    if (completion.status === 'impasse') {
+      setFinalNote('Negotiation reached impasse. You can start a new room or revise strategy and retry.');
+    }
+    if (completion.status === 'no_deal') {
+      setFinalNote('Negotiation closed without agreement. Start a new room when ready.');
+    }
+  }
+
+  function selectPath(nextPath: NegotiationPath) {
+    setPath(nextPath);
+    setError('');
+    setFinalNote('');
+    if (nextPath === 'join_existing' && roomFromQuery && !joinRoomId) {
+      setJoinRoomId(roomFromQuery);
+    }
+    setStep(resolveStepAfterPath(nextPath));
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      <h1 className="text-3xl font-bold">Negotiate</h1>
-
-      {/* Step: Connect */}
-      {step === 'connect' && (
-        <div className="text-center py-12 space-y-4">
-          <p className="text-gray-400">Connect your wallet to start negotiating.</p>
-          <WalletConnect onConnect={handleConnect} address={wallet} />
+    <div className="space-y-4 md:space-y-6">
+      <section className="card space-y-4 p-5 md:p-6">
+        <div>
+          <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Negotiation Workspace</h1>
+          <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
+            Define private constraints, negotiate directly with the counterparty, and produce verifiable deal records through EigenCloud TEE.
+          </p>
         </div>
-      )}
 
-      {/* Step: Choose */}
-      {step === 'choose' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
+        <FlowStepper steps={FLOW_STEPS.map((item) => ({ ...item }))} activeStepId={step} />
+
+        {error ? <InfoCallout title="Action needed" description={error} tone="danger" /> : null}
+        {finalNote ? <InfoCallout title="Outcome" description={finalNote} tone="warning" /> : null}
+      </section>
+
+      {step === 'identity' ? (
+        <section className="card p-5 md:p-6">
+          <h2 className="font-display text-3xl text-[var(--ink)]">Step 1: Establish Identity</h2>
+          <p className="mt-2 text-sm text-[var(--muted-ink)]">
+            Use MetaMask for signature-backed identity before entering the private negotiation room.
+          </p>
+          <div className="mt-4">
             <WalletConnect onConnect={handleConnect} address={wallet} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setStep('create')}
-              className="p-8 border border-gray-700 hover:border-blue-600 rounded-xl text-center transition"
-            >
-              <div className="text-2xl mb-2">+</div>
-              <div className="font-bold">Create Room</div>
-              <div className="text-sm text-gray-400 mt-1">Start a new negotiation</div>
-            </button>
-            <button
-              onClick={() => setStep('join')}
-              className="p-8 border border-gray-700 hover:border-green-600 rounded-xl text-center transition"
-            >
-              <div className="text-2xl mb-2">&rarr;</div>
-              <div className="font-bold">Join Room</div>
-              <div className="text-sm text-gray-400 mt-1">Enter a room ID</div>
-            </button>
-          </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {/* Step: Create */}
-      {step === 'create' && (
-        <div className="space-y-4">
-          <button onClick={() => setStep('choose')} className="text-sm text-gray-400 hover:text-white">&larr; Back</button>
-          <h2 className="text-xl font-bold">Create Negotiation Room</h2>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Deal Type</label>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDealType('service')}
-                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition ${
-                  dealType === 'service' ? 'border-blue-600 bg-blue-900/20 text-blue-400' : 'border-gray-700 text-gray-400'
-                }`}
-              >
-                Service Deal
-              </button>
-              <button
-                onClick={() => setDealType('conditional')}
-                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition ${
-                  dealType === 'conditional' ? 'border-purple-600 bg-purple-900/20 text-purple-400' : 'border-gray-700 text-gray-400'
-                }`}
-              >
-                Conditional Deal
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Category</label>
-            <input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="e.g., web-development, consulting, crypto-bet"
-              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+      {step === 'path' ? (
+        <div className="space-y-3">
+          {roomFromQuery ? (
+            <InfoCallout
+              title="Invitation detected"
+              description={`Join code ${roomFromQuery} is ready. Select "Join Existing Room" to continue.`}
+              tone="info"
             />
+          ) : null}
+
+          <section className="grid gap-4 md:grid-cols-2">
+            <article className="card space-y-4 p-5 md:p-6">
+              <h3 className="font-display text-2xl text-[var(--ink)]">Create New Room</h3>
+              <p className="text-sm text-[var(--muted-ink)]">
+                Set the agreement rules and private constraints for a direct, middleman-free negotiation.
+              </p>
+              <button className="button-secondary w-full justify-center" type="button" onClick={() => selectPath('create_custom')}>
+                Configure New Room
+              </button>
+            </article>
+
+            <article className="card space-y-4 p-5 md:p-6">
+              <h3 className="font-display text-2xl text-[var(--ink)]">Join Existing Room</h3>
+              <p className="text-sm text-[var(--muted-ink)]">
+                Join by room code and negotiate with private inputs while rule execution remains verifiable.
+              </p>
+              <button className="button-secondary w-full justify-center" type="button" onClick={() => selectPath('join_existing')}>
+                Enter Room Code
+              </button>
+            </article>
+          </section>
+        </div>
+      ) : null}
+
+      {step === 'setup' && path === 'create_custom' ? (
+        <section className="card space-y-4 p-5 md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Configure New Room</h2>
+            <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
+              Back To Path Selection
+            </button>
           </div>
 
-          {dealType === 'conditional' && (
-            <>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Condition</label>
-                <input
-                  value={condition}
-                  onChange={(e) => setCondition(e.target.value)}
-                  placeholder="e.g., Bitcoin price exceeds $100,000 by March 2026"
-                  className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Data Source</label>
-                  <select
-                    value={dataSource}
-                    onChange={(e) => setDataSource(e.target.value)}
-                    className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="coingecko">CoinGecko (Crypto)</option>
-                    <option value="news">News API</option>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Deal Type</span>
+              <select value={dealType} onChange={(event) => setDealType(event.target.value as DealType)} className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
+                <option value="service">Service Contract</option>
+                <option value="conditional">Conditional Contract</option>
+              </select>
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Category</span>
+              <input
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+                placeholder="e.g. ai-consulting, data-labeling, btc-bet"
+                className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+              />
+            </label>
+
+            {dealType === 'conditional' ? (
+              <>
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Condition</span>
+                  <input
+                    value={condition}
+                    onChange={(event) => setCondition(event.target.value)}
+                    placeholder="Bitcoin closes above 100000 USD by date"
+                    className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Data Source</span>
+                  <select value={dataSource} onChange={(event) => setDataSource(event.target.value)} className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
+                    <option value="coingecko">CoinGecko</option>
+                    <option value="news">News Feed</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">Resolution Date</label>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolution Date</span>
                   <input
                     type="date"
                     value={resolutionDate}
-                    onChange={(e) => setResolutionDate(e.target.value)}
-                    className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    onChange={(event) => setResolutionDate(event.target.value)}
+                    className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
                   />
-                </div>
-              </div>
-            </>
-          )}
+                </label>
+              </>
+            ) : null}
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Your Private Constraints (optional)</label>
-            <textarea
-              value={constraints}
-              onChange={(e) => setConstraints(e.target.value)}
-              placeholder='e.g., {"max_price": 500, "min_duration": "2 weeks"} or plain text'
-              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500"
-              rows={2}
-            />
-            <p className="text-xs text-gray-600 mt-1">These are private and never shown to the other party.</p>
+            <label className="space-y-1 md:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (JSON or plain text)</span>
+              <textarea
+                value={constraints}
+                onChange={(event) => setConstraints(event.target.value)}
+                rows={3}
+                className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                placeholder='{"max_price": 500, "deadline": "2026-03-01"}'
+              />
+            </label>
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="button-primary" onClick={handleCreateCustom} disabled={working || !hasSetupInputs}>
+              {working ? 'Creating Room...' : 'Create And Enter Room'}
+            </button>
+            <button type="button" className="button-secondary" onClick={() => setStep('path')}>
+              Choose Different Path
+            </button>
+          </div>
+        </section>
+      ) : null}
 
-          <button
-            onClick={handleCreate}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-medium transition"
-          >
-            Create Room
-          </button>
-        </div>
-      )}
+      {step === 'setup' && path === 'join_existing' ? (
+        <section className="card space-y-4 p-5 md:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Join Room</h2>
+            <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
+              Back To Path Selection
+            </button>
+          </div>
 
-      {/* Step: Join */}
-      {step === 'join' && (
-        <div className="space-y-4">
-          <button onClick={() => setStep('choose')} className="text-sm text-gray-400 hover:text-white">&larr; Back</button>
-          <h2 className="text-xl font-bold">Join Negotiation Room</h2>
-
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Room ID</label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Room ID</span>
             <input
               value={joinRoomId}
-              onChange={(e) => setJoinRoomId(e.target.value)}
-              placeholder="Paste the room ID here"
-              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 font-mono focus:outline-none focus:border-blue-500"
+              onChange={(event) => setJoinRoomId(event.target.value)}
+              placeholder="Paste room id"
+              className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 font-mono text-sm text-[var(--ink)]"
             />
-          </div>
+          </label>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Your Private Constraints (optional)</label>
+          <label className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (optional)</span>
             <textarea
               value={joinConstraints}
-              onChange={(e) => setJoinConstraints(e.target.value)}
-              placeholder='e.g., {"min_price": 200} or plain text'
-              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500"
-              rows={2}
+              onChange={(event) => setJoinConstraints(event.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+              placeholder='{"min_price": 200}'
             />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="button-primary" onClick={handleJoinExisting} disabled={working || !hasSetupInputs}>
+              {working ? 'Joining...' : 'Join And Enter Room'}
+            </button>
+            <button type="button" className="button-secondary" onClick={() => setStep('path')}>
+              Choose Different Path
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {step === 'live' && wallet ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-3xl text-[var(--ink)]">Step 4: Live Negotiation</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setStep('path');
+                setPath(null);
+                setNegotiationId('');
+                setFinalNote('');
+                setError('');
+              }}
+              className="button-ghost text-sm"
+            >
+              Start New Negotiation
+            </button>
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-
-          <button
-            onClick={handleJoin}
-            className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl font-medium transition"
-          >
-            Join Room
-          </button>
-        </div>
-      )}
-
-      {/* Step: Negotiate */}
-      {step === 'negotiate' && wallet && (
-        <NegotiationRoom
-          negotiationId={negotiationId}
-          walletAddress={wallet}
-          onComplete={() => {}}
-        />
-      )}
+          <NegotiationRoom negotiationId={negotiationId} walletAddress={wallet} onComplete={handleCompletion} />
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+export default function NegotiatePage() {
+  return (
+    <Suspense fallback={<section className="card p-6 text-sm text-[var(--muted-ink)]">Loading negotiation workspace...</section>}>
+      <NegotiateWorkspace />
+    </Suspense>
   );
 }

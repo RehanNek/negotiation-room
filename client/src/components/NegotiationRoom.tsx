@@ -1,188 +1,525 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import InfoCallout from '@/components/InfoCallout';
+import OfferTermsView from '@/components/OfferTermsView';
+import StatusPill from '@/components/StatusPill';
 import { api } from '@/lib/api';
+import { formatTimestamp, formatWallet, summarizeOfferTerms } from '@/lib/formatters';
+import { negotiationStatusCopy } from '@/lib/status';
+import type { NegotiationStatus, NegotiationSuggestion, NegotiationViewModel, RoundViewModel } from '@/lib/types';
+
+export interface NegotiationCompletion {
+  status: NegotiationStatus;
+  negotiationId: string;
+  contractId?: string;
+}
 
 interface NegotiationRoomProps {
   negotiationId: string;
   walletAddress: string;
-  onComplete?: () => void;
+  onComplete?: (completion: NegotiationCompletion) => void;
+}
+
+function extractMessageValue(payload: unknown): string | null {
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        const nested = extractMessageValue(parsed);
+        if (nested) return nested;
+      } catch {
+        return trimmed;
+      }
+    }
+
+    return trimmed;
+  }
+
+  if (!payload || typeof payload !== 'object') return null;
+  if (Array.isArray(payload)) {
+    const parts = payload
+      .map((item) => extractMessageValue(item))
+      .filter((item): item is string => Boolean(item && item.trim()));
+    return parts.length > 0 ? parts.join(', ') : null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const directText = [record.message, record.raw, record.text, record.content].find(
+    (value) => typeof value === 'string' && value.trim()
+  ) as string | undefined;
+  if (directText) return directText;
+
+  const scalarEntries = Object.entries(record)
+    .filter(([, value]) => {
+      const valueType = typeof value;
+      return valueType === 'string' || valueType === 'number' || valueType === 'boolean';
+    })
+    .slice(0, 4)
+    .map(([key, value]) => `${key}: ${String(value)}`);
+
+  if (scalarEntries.length > 0) {
+    return scalarEntries.join('\n');
+  }
+
+  return null;
+}
+
+function roundToMessage(round: RoundViewModel): string {
+  const rawMessage = extractMessageValue(round.offer_raw);
+  if (rawMessage) {
+    return rawMessage;
+  }
+  const structuredMessage = extractMessageValue(round.offer_structured);
+  if (structuredMessage) {
+    return structuredMessage;
+  }
+
+  const summary = summarizeOfferTerms(round.offer_structured);
+  if (summary.length === 0) {
+    return 'Shared structured offer terms.';
+  }
+  return summary.map((item) => `${item.label}: ${item.value}`).join('\n');
+}
+
+function orientSuggestionForRole(text: string, role: 'A' | 'B'): string {
+  if (!text.trim()) return text;
+  if (role === 'A') {
+    return text
+      .replace(/\bparty a\b/gi, 'you')
+      .replace(/\bparty b\b/gi, 'counterparty');
+  }
+  return text
+    .replace(/\bparty b\b/gi, 'you')
+    .replace(/\bparty a\b/gi, 'counterparty');
+}
+
+function normalizeSuggestionText(input: unknown): string {
+  if (typeof input === 'string') {
+    const cleaned = input.trim();
+    return cleaned || 'No suggestion generated for this round.';
+  }
+
+  if (!input || typeof input !== 'object') {
+    return 'No suggestion generated for this round.';
+  }
+
+  const record = input as Record<string, unknown>;
+  const nested = [record.suggestion, record.message, record.text, record.content].find(
+    (value) => typeof value === 'string' && value.trim()
+  ) as string | undefined;
+
+  if (nested) return nested.trim();
+  return 'No suggestion generated for this round.';
+}
+
+function loadStoredPrivateInputs(negotiationId: string, walletAddress: string): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  const key = `private_inputs:${negotiationId}:${walletAddress.toLowerCase()}`;
+  const raw = localStorage.getItem(key);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 export default function NegotiationRoom({ negotiationId, walletAddress, onComplete }: NegotiationRoomProps) {
-  const [negotiation, setNegotiation] = useState<any>(null);
+  const [negotiation, setNegotiation] = useState<NegotiationViewModel | null>(null);
   const [offer, setOffer] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [lastSuggestion, setLastSuggestion] = useState('');
+  const [suggestion, setSuggestion] = useState<NegotiationSuggestion | null>(null);
+  const [shareFeedback, setShareFeedback] = useState('');
+  const completionNotified = useRef(false);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  const notifyCompletion = useCallback(
+    (status: NegotiationStatus, contractId?: string) => {
+      if (completionNotified.current) return;
+      completionNotified.current = true;
+      onComplete?.({ status, negotiationId, contractId });
+    },
+    [negotiationId, onComplete]
+  );
 
   const poll = useCallback(async () => {
     try {
       const status = await api.getNegotiationStatus(negotiationId);
       setNegotiation(status);
       if (status.status === 'deal' || status.status === 'impasse' || status.status === 'no_deal') {
-        onComplete?.();
+        notifyCompletion(status.status);
       }
-    } catch (err: any) {
-      console.error('Poll error:', err);
+    } catch (err) {
+      console.error('Negotiation poll failed:', err);
     }
-  }, [negotiationId, onComplete]);
+  }, [negotiationId, notifyCompletion]);
 
   useEffect(() => {
-    poll();
-    const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
+    void poll();
+    const interval = window.setInterval(() => {
+      void poll();
+    }, 3000);
+    return () => window.clearInterval(interval);
   }, [poll]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [negotiation?.rounds.length, negotiation?.status]);
+
+  const role = useMemo<'A' | 'B'>(() => {
+    if (!negotiation) return 'B';
+    return walletAddress === negotiation.party_a_wallet ? 'A' : 'B';
+  }, [negotiation, walletAddress]);
+
+  const nextRoundNumber = negotiation ? negotiation.current_round + 1 : 1;
+  const alreadySubmittedForCurrentRound = Boolean(
+    negotiation?.rounds.some((round) => round.round_number === nextRoundNumber && round.party === role)
+  );
+
+  const statusCopy = negotiation ? negotiationStatusCopy(negotiation.status) : null;
+
+  const counterpartyWallet = useMemo(() => {
+    if (!negotiation) return null;
+    return role === 'A' ? negotiation.party_b_wallet : negotiation.party_a_wallet;
+  }, [negotiation, role]);
+
+  const inviteLink = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return `/negotiate?room=${encodeURIComponent(negotiationId)}`;
+    }
+    return `${window.location.origin}/negotiate?room=${encodeURIComponent(negotiationId)}`;
+  }, [negotiationId]);
+
+  const inviteMessage = useMemo(
+    () => [
+      'Join my private negotiation room.',
+      '',
+      `Room code: ${negotiationId}`,
+      `Join link: ${inviteLink}`,
+    ].join('\n'),
+    [inviteLink, negotiationId]
+  );
+
+  const storedPrivateInputs = useMemo(
+    () => loadStoredPrivateInputs(negotiationId, walletAddress),
+    [negotiationId, walletAddress]
+  );
+
+  useEffect(() => {
+    const constraints = negotiation?.private_constraints;
+    if (!constraints || Object.keys(constraints).length === 0) return;
+    const key = `private_inputs:${negotiationId}:${walletAddress.toLowerCase()}`;
+    localStorage.setItem(key, JSON.stringify(constraints));
+  }, [negotiation?.private_constraints, negotiationId, walletAddress]);
+
+  function showShareFeedback(message: string) {
+    setShareFeedback(message);
+    window.setTimeout(() => {
+      setShareFeedback('');
+    }, 2200);
+  }
+
+  async function shareInvite() {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: 'Join my negotiation room',
+          text: inviteMessage,
+          url: inviteLink,
+        });
+        showShareFeedback('Invite shared.');
+        return;
+      } catch {
+        // fall through to clipboard fallback
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(inviteMessage);
+      showShareFeedback('Share sheet unavailable. Invite copied with room code and link.');
+    } catch {
+      showShareFeedback('Unable to copy invite details on this device.');
+    }
+  }
 
   async function handleSubmitOffer() {
     if (!offer.trim()) return;
     setSubmitting(true);
     setError('');
+
     try {
       const result = await api.submitOffer({
         negotiation_id: negotiationId,
-        wallet_address: walletAddress,
         offer: offer.trim(),
       });
-      setLastSuggestion(result.suggestion?.suggestion || '');
+
+      if (result.suggestion) {
+        setSuggestion({
+          ...result.suggestion,
+          suggestion: orientSuggestionForRole(normalizeSuggestionText(result.suggestion.suggestion), role),
+        });
+      } else {
+        setSuggestion(null);
+      }
       setOffer('');
-      poll();
-    } catch (err: any) {
-      setError(err.message);
+      await poll();
+
+      if (result.negotiation_status === 'deal') {
+        notifyCompletion('deal', result.contract?.id);
+      } else if (result.negotiation_status === 'impasse') {
+        notifyCompletion('impasse');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit offer');
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleWalkAway() {
+    setError('');
     try {
-      await api.walkAway({ negotiation_id: negotiationId, wallet_address: walletAddress });
-      poll();
-    } catch (err: any) {
-      setError(err.message);
+      const result = await api.walkAway({ negotiation_id: negotiationId });
+      await poll();
+      notifyCompletion((result.status as NegotiationStatus) || 'no_deal');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to walk away');
     }
   }
 
-  if (!negotiation) {
-    return <div className="text-gray-400 animate-pulse">Loading negotiation...</div>;
+  if (!negotiation || !statusCopy) {
+    return <div className="card animate-pulse p-5 text-sm text-[var(--muted-ink)]">Loading negotiation room...</div>;
   }
 
-  const isPartyA = walletAddress === negotiation.party_a_wallet;
-  const myRole = isPartyA ? 'A' : 'B';
+  const canSubmit = negotiation.status === 'active' && !alreadySubmittedForCurrentRound;
+  const counterpartyLabel = counterpartyWallet
+    ? counterpartyWallet.toLowerCase() === walletAddress.toLowerCase()
+      ? 'Counterparty'
+      : formatWallet(counterpartyWallet)
+    : 'Awaiting participant';
+  const serverPrivateInputs = negotiation.private_constraints || {};
+  const myPrivateInputs = Object.keys(serverPrivateInputs).length > 0
+    ? serverPrivateInputs
+    : storedPrivateInputs;
+  const hasPrivateInputs = Object.keys(myPrivateInputs).length > 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-bold">Room: {negotiation.category}</h2>
-          <p className="text-sm text-gray-400">
-            {negotiation.deal_type} deal — Round {negotiation.current_round}/{negotiation.max_rounds} — You are Party {myRole}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            negotiation.status === 'active' ? 'bg-green-900/30 text-green-400' :
-            negotiation.status === 'deal' ? 'bg-blue-900/30 text-blue-400' :
-            negotiation.status === 'waiting' ? 'bg-yellow-900/30 text-yellow-400' :
-            'bg-red-900/30 text-red-400'
-          }`}>
-            {negotiation.status.toUpperCase()}
-          </span>
-        </div>
-      </div>
+    <section className="grid gap-4 lg:grid-cols-[1.75fr_1fr]">
+      <article className="card overflow-hidden p-0">
+        <header className="flex items-start justify-between gap-3 border-b border-[var(--line)] bg-white/80 px-4 py-3 md:px-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-2)] text-sm font-semibold text-[var(--ink)]">
+              {counterpartyWallet ? 'C' : '?'}
+            </div>
+            <div>
+              <h2 className="font-display text-2xl text-[var(--ink)] md:text-3xl">{negotiation.category}</h2>
+              <p className="text-xs text-[var(--muted-ink)]">
+                You ({formatWallet(walletAddress)}) chatting with {counterpartyLabel}
+              </p>
+              <p className="text-xs text-[var(--muted-ink)]">
+                {negotiation.deal_type} · round {negotiation.current_round}/{negotiation.max_rounds}
+              </p>
+            </div>
+          </div>
+          <StatusPill label={statusCopy.label} tone={statusCopy.tone} pulse={negotiation.status === 'active'} />
+        </header>
 
-      {/* Waiting for second party */}
-      {negotiation.status === 'waiting' && (
-        <div className="p-6 border border-dashed border-yellow-700 rounded-xl bg-yellow-900/10 text-center">
-          <p className="text-yellow-400 font-medium mb-2">Waiting for Party B to join</p>
-          <p className="text-sm text-gray-400 mb-3">Share this Room ID:</p>
-          <code className="px-4 py-2 bg-gray-800 rounded-lg text-sm font-mono text-white select-all">
-            {negotiationId}
-          </code>
-        </div>
-      )}
+        {negotiation.status === 'waiting' ? (
+          <div className="border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-4 md:px-5">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Share Invite</h3>
+            <p className="mt-1 text-sm text-[var(--ink)]">
+              Send this private room invite by email or message. The link includes the room code.
+            </p>
 
-      {/* Rounds */}
-      <div className="space-y-3">
-        {negotiation.rounds.map((round: any, i: number) => (
+            <div className="mt-3 space-y-2">
+              <div className="rounded-lg border border-[var(--line)] bg-white/80 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-[var(--muted-ink)]">Room Code</p>
+                <code className="font-mono text-sm text-[var(--ink)]">{negotiationId}</code>
+              </div>
+              <label className="block text-[11px] uppercase tracking-wide text-[var(--muted-ink)]">
+                Invite Link
+                <input
+                  readOnly
+                  value={inviteLink}
+                  className="mt-1 w-full rounded-lg border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" onClick={shareInvite} className="button-primary text-sm">
+                Share Invite
+              </button>
+            </div>
+            {shareFeedback ? <p className="mt-2 text-xs text-[var(--muted-ink)]">{shareFeedback}</p> : null}
+          </div>
+        ) : null}
+
+        <div className="relative bg-[var(--surface-2)]">
           <div
-            key={round.id || i}
-            className={`p-4 rounded-xl border ${
-              round.party === myRole
-                ? 'border-blue-800 bg-blue-900/10 ml-8'
-                : 'border-gray-700 bg-gray-900/50 mr-8'
-            }`}
-          >
-            <div className="flex justify-between text-xs text-gray-500 mb-2">
-              <span>Party {round.party} — Round {round.round_number}</span>
-              <span>{new Date(round.created_at).toLocaleTimeString()}</span>
-            </div>
-            <div className="text-sm">
-              {typeof round.offer_structured === 'object'
-                ? JSON.stringify(round.offer_structured, null, 2)
-                : round.offer_structured}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* AI Suggestion */}
-      {lastSuggestion && (
-        <div className="p-4 border border-purple-800 bg-purple-900/10 rounded-xl">
-          <p className="text-xs text-purple-400 mb-1">AI Suggestion</p>
-          <p className="text-sm text-gray-300">{lastSuggestion}</p>
-        </div>
-      )}
-
-      {/* Outcome */}
-      {negotiation.status === 'deal' && (
-        <div className="p-6 border border-green-700 bg-green-900/10 rounded-xl text-center">
-          <p className="text-green-400 text-xl font-bold">DEAL REACHED</p>
-          <p className="text-sm text-gray-400 mt-2">Contract has been created.</p>
-        </div>
-      )}
-      {negotiation.status === 'impasse' && (
-        <div className="p-6 border border-red-700 bg-red-900/10 rounded-xl text-center">
-          <p className="text-red-400 text-xl font-bold">IMPASSE</p>
-          <p className="text-sm text-gray-400 mt-2">Maximum rounds reached without agreement.</p>
-        </div>
-      )}
-      {negotiation.status === 'no_deal' && (
-        <div className="p-6 border border-red-700 bg-red-900/10 rounded-xl text-center">
-          <p className="text-red-400 text-xl font-bold">NO DEAL</p>
-          <p className="text-sm text-gray-400 mt-2">A party walked away from the negotiation.</p>
-        </div>
-      )}
-
-      {/* Input */}
-      {negotiation.status === 'active' && (
-        <div className="space-y-3">
-          <textarea
-            value={offer}
-            onChange={(e) => setOffer(e.target.value)}
-            placeholder="Type your offer in plain English... (e.g., 'I can do the landing page for $300 with a 2-week timeline')"
-            className="w-full p-4 bg-gray-800 border border-gray-600 rounded-xl text-white placeholder-gray-500 resize-none focus:outline-none focus:border-blue-500"
-            rows={3}
+            className="pointer-events-none absolute inset-0 opacity-50"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 16px 16px, color-mix(in srgb, var(--line), transparent 70%) 1.2px, transparent 0)',
+              backgroundSize: '26px 26px',
+            }}
           />
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <div className="flex gap-3">
-            <button
-              onClick={handleSubmitOffer}
-              disabled={submitting || !offer.trim()}
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-xl font-medium transition"
-            >
-              {submitting ? 'Submitting...' : 'Submit Offer'}
-            </button>
-            <button
-              onClick={handleWalkAway}
-              className="px-6 py-3 border border-red-700 text-red-400 hover:bg-red-900/20 rounded-xl font-medium transition"
-            >
-              Walk Away
-            </button>
+
+          <div className="relative max-h-[62vh] overflow-y-auto px-3 py-4 md:px-4 md:py-5">
+            <div className="space-y-3">
+              <div className="flex justify-center">
+                <p className="rounded-full border border-[var(--line)] bg-white/85 px-3 py-1 text-[11px] text-[var(--muted-ink)]">
+                  Private deal channel active
+                </p>
+              </div>
+
+              {negotiation.rounds.length === 0 ? (
+                <div className="flex justify-center">
+                  <p className="rounded-2xl border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-[var(--muted-ink)]">
+                    No messages yet. Send the opening proposal.
+                  </p>
+                </div>
+              ) : (
+                negotiation.rounds.map((round) => {
+                  const mine = round.party === role;
+                  const bubbleMessage = roundToMessage(round);
+                  return (
+                    <div key={round.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                      <div className="max-w-[88%] md:max-w-[78%]">
+                        <p className={`mb-1 text-[11px] ${mine ? 'text-right text-[var(--muted-ink)]' : 'text-[var(--muted-ink)]'}`}>
+                          {mine ? 'You' : counterpartyLabel}
+                        </p>
+                        <div
+                          className={`rounded-2xl border px-4 py-2 shadow-sm ${
+                            mine
+                              ? 'rounded-br-md border-[var(--ink)] bg-[var(--ink)] text-[var(--surface-1)]'
+                              : 'rounded-bl-md border-[var(--line)] bg-white text-[var(--ink)]'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed">{bubbleMessage}</p>
+                        </div>
+
+                        <div className={`mt-1 flex items-center gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+                          <span className="text-[10px] text-[var(--muted-ink)]">{formatTimestamp(round.created_at)}</span>
+                          <details>
+                            <summary className="cursor-pointer text-[10px] text-[var(--muted-ink)]">terms</summary>
+                            <div className="mt-1">
+                              <OfferTermsView
+                                terms={round.offer_structured}
+                                title={mine ? 'Your Structured Terms' : 'Counterparty Structured Terms'}
+                                compact
+                              />
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {negotiation.status === 'deal' ? (
+                <div className="flex justify-center">
+                  <p className="rounded-full border border-[color:color-mix(in srgb,var(--success),#ffffff 40%)] bg-[color:color-mix(in srgb,var(--success),#ffffff 92%)] px-3 py-1 text-[11px] text-[var(--ink)]">
+                    Deal agreed. Terms recorded.
+                  </p>
+                </div>
+              ) : null}
+
+              {negotiation.status === 'impasse' || negotiation.status === 'no_deal' ? (
+                <div className="flex justify-center">
+                  <p className="rounded-full border border-[color:color-mix(in srgb,var(--danger),#ffffff 45%)] bg-[color:color-mix(in srgb,var(--danger),#ffffff 94%)] px-3 py-1 text-[11px] text-[var(--ink)]">
+                    Conversation closed.
+                  </p>
+                </div>
+              ) : null}
+
+              <div ref={chatBottomRef} />
+            </div>
           </div>
         </div>
-      )}
-    </div>
+
+        <footer className="border-t border-[var(--line)] bg-white/85 p-3 md:p-4">
+          {negotiation.status === 'active' ? (
+            <div className="space-y-3">
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={offer}
+                  onChange={(event) => setOffer(event.target.value)}
+                  placeholder="Write your negotiation message..."
+                  className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-white p-3 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--line-strong)]"
+                />
+                <button
+                  type="button"
+                  onClick={handleSubmitOffer}
+                  disabled={submitting || !offer.trim() || !canSubmit}
+                  className="button-primary h-11 px-4"
+                >
+                  {submitting ? 'Sending...' : 'Send'}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-[var(--muted-ink)]">
+                  {canSubmit
+                    ? `Your turn. Round ${nextRoundNumber}.`
+                    : 'Waiting for counterparty reply before your next message.'}
+                </p>
+                <button type="button" onClick={handleWalkAway} className="button-ghost text-xs text-[var(--danger)] hover:border-[var(--danger)]">
+                  Walk Away
+                </button>
+              </div>
+
+              {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+            </div>
+          ) : (
+            <InfoCallout title="Negotiation Closed" description="No more messages can be sent for this room." />
+          )}
+        </footer>
+      </article>
+
+      <aside className="space-y-4 lg:sticky lg:top-28 lg:h-fit">
+        <InfoCallout title="Current State" description={statusCopy.description} tone={statusCopy.tone} />
+
+        {suggestion?.suggestion ? (
+          <InfoCallout title="AI Negotiation Hint (for you)" description={suggestion.suggestion} tone="info">
+            <OfferTermsView terms={suggestion.suggested_terms} title="Suggested Terms" compact />
+          </InfoCallout>
+        ) : null}
+
+        <InfoCallout
+          title="Your Private Inputs"
+          description="Visible only to your connected wallet in this room. These inputs are used for your side's strategy."
+          tone="neutral"
+        >
+          {hasPrivateInputs ? (
+            <OfferTermsView terms={myPrivateInputs} title="Private Inputs" compact />
+          ) : (
+            <p className="text-xs text-[var(--muted-ink)]">
+              No private inputs were provided for this wallet.
+            </p>
+          )}
+        </InfoCallout>
+
+        {negotiation.status === 'deal' ? (
+          <InfoCallout
+            title="Deal captured"
+            description="Final terms are now recorded. Continue to contracts to review the stored agreement and next settlement steps."
+            tone="success"
+          >
+            <Link href="/contracts?from=deal" className="button-secondary text-xs">
+              Open Contracts
+            </Link>
+          </InfoCallout>
+        ) : null}
+      </aside>
+    </section>
   );
 }

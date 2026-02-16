@@ -1,9 +1,75 @@
 import { v4 as uuidv4 } from 'uuid';
-import { run, get, all } from '../db';
+import { run, get, all, flushDb } from '../db';
 import { parseOfferToStructured, generateSuggestion, analyzeConvergence, generateContractSummary } from './ai';
 import { createContract } from './contract';
 import { updateReputation } from './reputation';
+import { conflict, forbidden, notFound } from '../errors';
+import { isDemoModeEnabled } from './auth';
 import type { CreateNegotiationRequest, JoinNegotiationRequest, SubmitOfferRequest } from '../types';
+
+interface FinalRoundSnapshot {
+  party: string;
+  offer_structured: Record<string, any>;
+  offer_raw?: string;
+}
+
+function areValuesEqual(left: unknown, right: unknown): boolean {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
+
+function buildFinalTerms(rounds: FinalRoundSnapshot[]): Record<string, any> {
+  const lastA = [...rounds].reverse().find((round) => round.party === 'A');
+  const lastB = [...rounds].reverse().find((round) => round.party === 'B');
+
+  if (!lastA && !lastB) return {};
+
+  if (lastA && !lastB) {
+    return {
+      agreed_terms: lastA.offer_structured,
+      party_a_offer: lastA.offer_structured,
+      party_a_message: lastA.offer_raw || null,
+    };
+  }
+
+  if (!lastA && lastB) {
+    return {
+      agreed_terms: lastB.offer_structured,
+      party_b_offer: lastB.offer_structured,
+      party_b_message: lastB.offer_raw || null,
+    };
+  }
+
+  const shared: Record<string, any> = {};
+  const keys = new Set<string>([
+    ...Object.keys(lastA?.offer_structured || {}),
+    ...Object.keys(lastB?.offer_structured || {}),
+  ]);
+
+  for (const key of keys) {
+    const aValue = lastA?.offer_structured?.[key];
+    const bValue = lastB?.offer_structured?.[key];
+    if (aValue !== undefined && bValue !== undefined && areValuesEqual(aValue, bValue)) {
+      shared[key] = aValue;
+    }
+  }
+
+  const terms: Record<string, any> = {
+    party_a_offer: lastA?.offer_structured || {},
+    party_b_offer: lastB?.offer_structured || {},
+    party_a_message: lastA?.offer_raw || null,
+    party_b_message: lastB?.offer_raw || null,
+  };
+
+  if (Object.keys(shared).length > 0) {
+    terms.agreed_terms = shared;
+  }
+
+  return terms;
+}
 
 export function createNegotiation(req: CreateNegotiationRequest): { room_id: string; negotiation: any } {
   const id = uuidv4();
@@ -26,10 +92,11 @@ export function createNegotiation(req: CreateNegotiationRequest): { room_id: str
 
 export function joinNegotiation(req: JoinNegotiationRequest): { negotiation: any } {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [req.room_id]);
-  if (!neg) throw new Error('Room not found');
-  if (neg.status !== 'waiting') throw new Error('Room is not accepting new participants');
-  // Allow same wallet in demo/hackathon mode for testing
-  // if (neg.party_a_wallet === req.wallet_address) throw new Error('Cannot join your own room');
+  if (!neg) throw notFound('Room not found');
+  if (neg.status !== 'waiting') throw conflict('Room is not accepting new participants');
+  if (neg.party_a_wallet === req.wallet_address && !isDemoModeEnabled()) {
+    throw conflict('Cannot join your own room');
+  }
 
   run(
     `UPDATE negotiations SET party_b_wallet = ?, party_b_constraints = ?, status = 'active', updated_at = datetime('now') WHERE id = ?`,
@@ -55,8 +122,8 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   contract?: any;
 }> {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [req.negotiation_id]);
-  if (!neg) throw new Error('Negotiation not found');
-  if (neg.status !== 'active') throw new Error('Negotiation is not active');
+  if (!neg) throw notFound('Negotiation not found');
+  if (neg.status !== 'active') throw conflict('Negotiation is not active');
 
   const existingRounds = all(
     'SELECT * FROM rounds WHERE negotiation_id = ? ORDER BY round_number, created_at',
@@ -76,11 +143,11 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   } else if (req.wallet_address === neg.party_b_wallet) {
     party = 'B';
   } else {
-    throw new Error('You are not a participant in this negotiation');
+    throw forbidden('You are not a participant in this negotiation');
   }
 
   const alreadySubmitted = currentRoundOffers.some((r: any) => r.party === party);
-  if (alreadySubmitted) throw new Error('You already submitted an offer for this round');
+  if (alreadySubmitted) throw conflict('You already submitted an offer for this round');
 
   let offerStructured: Record<string, any>;
   let offerRaw: string;
@@ -97,8 +164,9 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   const constraints = party === 'A'
     ? JSON.parse(neg.party_a_constraints as string)
     : JSON.parse(neg.party_b_constraints as string);
-  const allRounds = existingRounds.map((r: any) => ({
+  const allRounds: FinalRoundSnapshot[] = existingRounds.map((r: any) => ({
     party: r.party as string,
+    offer_raw: r.offer_raw as string,
     offer_structured: JSON.parse(r.offer_structured as string),
   }));
 
@@ -120,8 +188,10 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   if (updatedRoundOffers >= 2) {
     run(`UPDATE negotiations SET current_round = ?, updated_at = datetime('now') WHERE id = ?`, [currentRoundNumber, req.negotiation_id]);
 
-    const allRoundsNow = [...allRounds, { party, offer_structured: offerStructured }];
-    const convergence = await analyzeConvergence(allRoundsNow);
+    const allRoundsNow: FinalRoundSnapshot[] = [...allRounds, { party, offer_raw: offerRaw, offer_structured: offerStructured }];
+    const convergence = await analyzeConvergence(
+      allRoundsNow.map((round) => ({ party: round.party, offer_structured: round.offer_structured }))
+    );
 
     if (convergence.converging && convergence.gap_percentage < 20) {
       run(`UPDATE negotiations SET status = 'deal', updated_at = datetime('now') WHERE id = ?`, [req.negotiation_id]);
@@ -129,6 +199,7 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
       const contract = await finalizeContract(neg, allRoundsNow);
       updateReputation(neg.party_a_wallet as string, 'deal', currentRoundNumber);
       updateReputation(neg.party_b_wallet as string, 'deal', currentRoundNumber);
+      flushDb();
 
       return {
         round: { id: roundId, round_number: currentRoundNumber, party, offer_structured: offerStructured },
@@ -142,6 +213,7 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
       run(`UPDATE negotiations SET status = 'impasse', updated_at = datetime('now') WHERE id = ?`, [req.negotiation_id]);
       updateReputation(neg.party_a_wallet as string, 'impasse', currentRoundNumber);
       updateReputation(neg.party_b_wallet as string, 'impasse', currentRoundNumber);
+      flushDb();
 
       return {
         round: { id: roundId, round_number: currentRoundNumber, party, offer_structured: offerStructured },
@@ -158,10 +230,8 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   };
 }
 
-async function finalizeContract(neg: any, rounds: Array<{ party: string; offer_structured: Record<string, any> }>): Promise<any> {
-  const lastA = [...rounds].reverse().find((r) => r.party === 'A');
-  const lastB = [...rounds].reverse().find((r) => r.party === 'B');
-  const terms = { ...lastA?.offer_structured, ...lastB?.offer_structured };
+async function finalizeContract(neg: any, rounds: FinalRoundSnapshot[]): Promise<any> {
+  const terms = buildFinalTerms(rounds);
 
   const summary = await generateContractSummary(terms, neg.deal_type as string, neg.category as string);
   const params = JSON.parse(neg.params as string);
@@ -181,26 +251,53 @@ async function finalizeContract(neg: any, rounds: Array<{ party: string; offer_s
 
 export function walkAway(negotiationId: string, walletAddress: string): { status: string } {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
-  if (!neg) throw new Error('Negotiation not found');
-  if (neg.status !== 'active') throw new Error('Negotiation is not active');
+  if (!neg) throw notFound('Negotiation not found');
+  if (neg.status !== 'active') throw conflict('Negotiation is not active');
   if (walletAddress !== neg.party_a_wallet && walletAddress !== neg.party_b_wallet) {
-    throw new Error('You are not a participant');
+    throw forbidden('You are not a participant');
   }
 
   run(`UPDATE negotiations SET status = 'no_deal', updated_at = datetime('now') WHERE id = ?`, [negotiationId]);
   updateReputation(walletAddress, 'walkaway', neg.current_round as number);
+  flushDb();
 
   return { status: 'no_deal' };
 }
 
-export function getNegotiationStatus(negotiationId: string): any {
+export function getNegotiationStatus(negotiationId: string, requesterWallet?: string): any {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
-  if (!neg) throw new Error('Negotiation not found');
+  if (!neg) throw notFound('Negotiation not found');
+  if (
+    requesterWallet &&
+    requesterWallet !== neg.party_a_wallet &&
+    requesterWallet !== neg.party_b_wallet
+  ) {
+    throw forbidden('You are not a participant in this negotiation');
+  }
 
   const rounds = all(
-    'SELECT id, round_number, party, offer_structured, ai_suggestion, created_at FROM rounds WHERE negotiation_id = ? ORDER BY round_number, created_at',
+    'SELECT id, round_number, party, offer_raw, offer_structured, ai_suggestion, created_at FROM rounds WHERE negotiation_id = ? ORDER BY round_number, created_at',
     [negotiationId]
   );
+
+  const requesterParty = requesterWallet
+    ? requesterWallet === neg.party_a_wallet
+      ? 'A'
+      : requesterWallet === neg.party_b_wallet
+        ? 'B'
+        : null
+    : null;
+
+  let privateConstraints: Record<string, any> = {};
+  try {
+    if (requesterParty === 'A') {
+      privateConstraints = JSON.parse((neg.party_a_constraints as string) || '{}');
+    } else if (requesterParty === 'B') {
+      privateConstraints = JSON.parse((neg.party_b_constraints as string) || '{}');
+    }
+  } catch {
+    privateConstraints = {};
+  }
 
   return {
     id: neg.id,
@@ -214,8 +311,11 @@ export function getNegotiationStatus(negotiationId: string): any {
     party_b_wallet: neg.party_b_wallet,
     rounds: rounds.map((r: any) => ({
       ...r,
+      offer_raw: r.offer_raw,
       offer_structured: JSON.parse(r.offer_structured as string),
     })),
+    requester_party: requesterParty,
+    private_constraints: privateConstraints,
     created_at: neg.created_at,
     updated_at: neg.updated_at,
   };

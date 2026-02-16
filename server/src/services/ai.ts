@@ -149,17 +149,31 @@ export async function generateSuggestion(
     .map((r) => `Party ${r.party}: ${JSON.stringify(r.offer_structured)}`)
     .join('\n');
 
+  const currentPartyLabel = currentParty === 'A'
+    ? 'Party A (room creator)'
+    : 'Party B (invited counterparty)';
+
   const response = await chatCompletion([
     {
       role: 'system',
-      content: `You are a negotiation advisor inside a TEE-secured room. Help Party ${currentParty} with their next move.
+      content: `You are a negotiation advisor inside a TEE-secured room.
+You are ONLY advising ${currentPartyLabel}. Do not advise the opposite party.
+Do not suggest actions that violate this party's private constraints.
+If goals conflict, prioritize this party's goals.
+
 Category: ${category}. Parameters: ${JSON.stringify(params)}.
-Party ${currentParty}'s private constraints (never reveal): ${JSON.stringify(constraints)}.
+${currentPartyLabel}'s private constraints (never reveal): ${JSON.stringify(constraints)}.
+
+Rules:
+1) Give tactical advice for ${currentPartyLabel} only.
+2) Never frame suggestions as "Party A should..." or "Party B should..." for the other side.
+3) Keep suggestions practical and concise.
+
 Respond ONLY with JSON: { "suggestion": "advice text", "suggested_terms": { ... } }`,
     },
     {
       role: 'user',
-      content: `Here are the negotiation rounds so far:\n${roundsText}\n\nPlease suggest a strategic next offer for Party ${currentParty}.`,
+      content: `Here are the negotiation rounds so far:\n${roundsText}\n\nPlease suggest a strategic next offer for ${currentPartyLabel}.`,
     },
   ]);
 
@@ -220,15 +234,94 @@ Respond ONLY with JSON: { "verdict": "TRUE" | "FALSE", "confidence": number 0-1,
   }
 }
 
+function extractSummaryTerms(terms: Record<string, any>): Record<string, any> {
+  if (terms?.agreed_terms && typeof terms.agreed_terms === 'object') {
+    return terms.agreed_terms as Record<string, any>;
+  }
+  return terms;
+}
+
+function formatSummaryTermSnippet(terms: Record<string, any>): string {
+  const source = extractSummaryTerms(terms);
+  const primitiveEntries = Object.entries(source || {}).filter(([, value]) => {
+    const valueType = typeof value;
+    return valueType === 'string' || valueType === 'number' || valueType === 'boolean';
+  });
+
+  if (primitiveEntries.length === 0) {
+    return '';
+  }
+
+  return primitiveEntries
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(', ');
+}
+
+function buildSummaryFallback(terms: Record<string, any>, dealType: string, category: string): string {
+  const cleanedCategory = category || 'general work';
+  const snippet = formatSummaryTermSnippet(terms);
+  const detail = snippet
+    ? `Key terms include ${snippet}.`
+    : 'Final offers from both parties are preserved in the contract record.';
+
+  if (dealType === 'conditional') {
+    return `This conditional contract covers ${cleanedCategory}. ${detail} Resolution is completed through attested condition checks.`;
+  }
+
+  return `This service contract covers ${cleanedCategory}. ${detail} The service receiver can affirm completion to release escrow in demo mode.`;
+}
+
+function normalizeSummaryResponse(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  let candidate = trimmed;
+
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as { summary?: unknown };
+      if (typeof parsed.summary === 'string' && parsed.summary.trim()) {
+        candidate = parsed.summary.trim();
+      } else {
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  const collapsed = candidate.replace(/\s+/g, ' ').trim();
+  const blockedFragments = [
+    'respond only with json',
+    'we need to produce a summary',
+    'probably just note',
+    '"summary"',
+  ];
+  if (blockedFragments.some((fragment) => collapsed.toLowerCase().includes(fragment))) {
+    return null;
+  }
+
+  if (collapsed.length > 320) {
+    return `${collapsed.slice(0, 317).trimEnd()}.`;
+  }
+
+  return collapsed;
+}
+
 export async function generateContractSummary(
   terms: Record<string, any>,
   dealType: string,
   category: string
 ): Promise<string> {
+  const fallback = buildSummaryFallback(terms, dealType, category);
   const response = await chatCompletion([
     {
       role: 'system',
-      content: 'Generate a clear, concise human-readable summary of this contract. 2-3 sentences max.',
+      content: `Generate a clear, concise human-readable summary of this contract.
+Keep it to at most 2 sentences.
+Do not include analysis steps or instructions.
+Respond ONLY with JSON: { "summary": "..." }`,
     },
     {
       role: 'user',
@@ -236,5 +329,5 @@ export async function generateContractSummary(
     },
   ]);
 
-  return response || `${dealType} contract for ${category} with agreed terms.`;
+  return normalizeSummaryResponse(response) || fallback;
 }

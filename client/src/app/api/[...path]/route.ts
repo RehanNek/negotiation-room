@@ -5,10 +5,16 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://136.109.58.88:3000';
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const url = `${BACKEND_URL}/${path.join('/')}${request.nextUrl.search}`;
+  const authHeader = request.headers.get('authorization');
+  const headers: HeadersInit = authHeader ? { Authorization: authHeader } : {};
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const res = await fetch(url, { headers });
+    const body = await res.text();
+    const contentType = res.headers.get('content-type') || 'application/json';
+    return new NextResponse(body, {
+      status: res.status,
+      headers: { 'Content-Type': contentType },
+    });
   } catch {
     return NextResponse.json({ error: 'Backend unavailable' }, { status: 502 });
   }
@@ -17,15 +23,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const url = `${BACKEND_URL}/${path.join('/')}`;
+  const authHeader = request.headers.get('authorization');
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (authHeader) headers.Authorization = authHeader;
   try {
-    const body = await request.json();
+    let body: unknown = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    const responseBody = await res.text();
+    const contentType = res.headers.get('content-type') || 'application/json';
+    return new NextResponse(responseBody, {
+      status: res.status,
+      headers: { 'Content-Type': contentType },
+    });
   } catch {
     return NextResponse.json({ error: 'Backend unavailable' }, { status: 502 });
   }

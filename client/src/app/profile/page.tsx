@@ -1,103 +1,154 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import WalletConnect from '@/components/WalletConnect';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import EmptyState from '@/components/EmptyState';
+import EvidencePanel from '@/components/EvidencePanel';
+import InfoCallout from '@/components/InfoCallout';
 import ReputationBadge from '@/components/ReputationBadge';
+import WalletConnect from '@/components/WalletConnect';
 import { api } from '@/lib/api';
+import { buildReadableContractSummary, formatTimestamp } from '@/lib/formatters';
+import type { ContractViewModel, ReputationViewModel } from '@/lib/types';
 
 export default function ProfilePage() {
   const [wallet, setWallet] = useState<string | null>(null);
-  const [reputation, setReputation] = useState<any>(null);
-  const [contracts, setContracts] = useState<any[]>([]);
+  const [reputation, setReputation] = useState<ReputationViewModel | null>(null);
+  const [contracts, setContracts] = useState<ContractViewModel[]>([]);
+  const [error, setError] = useState('');
 
-  const handleConnect = useCallback((addr: string) => {
-    setWallet(addr || null);
+  const handleConnect = useCallback((address: string) => {
+    const normalized = address || null;
+    setWallet(normalized);
+    if (!normalized) {
+      setReputation(null);
+      setContracts([]);
+      setError('');
+    }
   }, []);
 
   useEffect(() => {
     if (!wallet) return;
-    api.getReputation(wallet).then(setReputation).catch(() => {});
-    api.getContractsByWallet(wallet).then(setContracts).catch(() => {});
+
+    Promise.all([api.getReputation(wallet), api.getContractsByWallet(wallet)])
+      .then(([rep, contractList]) => {
+        setError('');
+        setReputation(rep);
+        setContracts(contractList);
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load profile data');
+      });
   }, [wallet]);
 
+  const summary = useMemo(() => {
+    const pending = contracts.filter((contract) => contract.status === 'pending_resolution').length;
+    const resolved = contracts.filter((contract) => contract.status === 'resolved').length;
+    return {
+      pending,
+      resolved,
+      total: contracts.length,
+    };
+  }, [contracts]);
+
+  const recentContracts = contracts
+    .slice()
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5);
+
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">My Profile</h1>
-        <WalletConnect onConnect={handleConnect} address={wallet} />
-      </div>
-
-      {!wallet && (
-        <p className="text-gray-400 text-center py-12">Connect your wallet to see your profile.</p>
-      )}
-
-      {wallet && reputation && (
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Reputation */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold">Reputation</h2>
-            <ReputationBadge
-              score={reputation.total_reputation}
-              goodFaith={reputation.good_faith_score}
-              deals={reputation.deals_completed}
-            />
-            <div className="border border-gray-800 rounded-xl p-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Negotiations</span>
-                <span>{reputation.total_negotiations}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Deals Completed</span>
-                <span>{reputation.deals_completed}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Conditional Deals</span>
-                <span>{reputation.conditional_deals}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Avg Rounds</span>
-                <span>{typeof reputation.avg_rounds === 'number' ? reputation.avg_rounds.toFixed(1) : '0'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Good Faith Score</span>
-                <span>{reputation.good_faith_score}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Last Updated</span>
-                <span className="text-xs">{reputation.last_updated}</span>
-              </div>
-            </div>
+    <div className="space-y-4 md:space-y-6">
+      <section className="card space-y-4 p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Reputation Ledger</h1>
+            <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
+              Track negotiation behavior, resolution quality, and verifiable history tied to your wallet identity.
+            </p>
           </div>
-
-          {/* History */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold">Contract History</h2>
-            {contracts.length === 0 ? (
-              <p className="text-gray-500">No contracts yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {contracts.map(c => (
-                  <div key={c.id} className="p-3 border border-gray-800 rounded-lg text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">{c.deal_type}</span>
-                      <span className={
-                        c.status === 'active' ? 'text-green-400' :
-                        c.status === 'pending_resolution' ? 'text-yellow-400' :
-                        'text-blue-400'
-                      }>{c.status}</span>
-                    </div>
-                    <p className="text-gray-300 mt-1 truncate">{c.summary}</p>
-                    {c.attestation_id && (
-                      <a href={`/verify?id=${c.attestation_id}`} className="text-xs text-blue-400 hover:underline">
-                        View attestation
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <WalletConnect onConnect={handleConnect} address={wallet} compact />
         </div>
+
+        {error ? <InfoCallout title="Profile warning" description={error} tone="danger" /> : null}
+      </section>
+
+      {!wallet ? (
+        <EmptyState
+          title="Connect to view profile"
+          description="Profile and reputation diagnostics are wallet-scoped. Connect a session to load your metrics and history."
+        />
+      ) : !reputation ? (
+        <section className="card animate-pulse p-6 text-sm text-[var(--muted-ink)]">Loading profile...</section>
+      ) : (
+        <>
+          <section className="grid gap-4 md:grid-cols-4">
+            <ReputationBadge score={reputation.total_reputation} goodFaith={reputation.good_faith_score} deals={reputation.deals_completed} />
+
+            <article className="card p-4 md:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Total Negotiations</p>
+              <p className="mt-2 font-display text-4xl text-[var(--ink)]">{reputation.total_negotiations}</p>
+            </article>
+
+            <article className="card p-4 md:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Pending Resolutions</p>
+              <p className="mt-2 font-display text-4xl text-[var(--ink)]">{summary.pending}</p>
+            </article>
+
+            <article className="card p-4 md:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolved Contracts</p>
+              <p className="mt-2 font-display text-4xl text-[var(--ink)]">{summary.resolved}</p>
+            </article>
+          </section>
+
+          <section className="grid gap-4 md:grid-cols-[1.1fr_1fr]">
+            <EvidencePanel title="Reputation Diagnostics" subtitle="Layered details for judges and technical reviewers.">
+              <div className="grid gap-2 text-sm md:grid-cols-2">
+                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Average Rounds: {reputation.avg_rounds.toFixed(2)}</p>
+                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Conditional Deals: {reputation.conditional_deals}</p>
+                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Contracts Seen: {summary.total}</p>
+                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Last Updated: {formatTimestamp(reputation.last_updated)}</p>
+              </div>
+
+              <details className="rounded-xl border border-[var(--line)] bg-white/70 p-3">
+                <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Technical scoring interpretation</summary>
+                <p className="mt-2 text-sm text-[var(--muted-ink)]">
+                  Reputation captures negotiated outcomes, round efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
+                  anchored by attested process records.
+                </p>
+              </details>
+            </EvidencePanel>
+
+            <EvidencePanel title="Recent Contract History" subtitle="Quick access to latest records and attestation links.">
+              {recentContracts.length === 0 ? (
+                <p className="text-sm text-[var(--muted-ink)]">No contracts recorded yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentContracts.map((contract) => (
+                    <div key={contract.id} className="rounded-xl border border-[var(--line)] bg-white/75 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-ink)]">
+                        <span className="uppercase tracking-wide">{contract.deal_type}</span>
+                        <span>{contract.status}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-[var(--ink)]">
+                        {buildReadableContractSummary(contract.deal_type, contract.summary, contract.terms)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Link href={`/contracts?focus=${contract.id}`} className="button-secondary text-xs">
+                          Open Contract
+                        </Link>
+                        {contract.attestation_id ? (
+                          <Link href={`/verify?id=${contract.attestation_id}`} className="button-ghost text-xs">
+                            Verify
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </EvidencePanel>
+          </section>
+        </>
       )}
     </div>
   );

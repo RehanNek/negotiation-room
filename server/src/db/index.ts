@@ -4,8 +4,33 @@ import fs from 'fs';
 import { initializeDatabase } from './schema';
 
 let db: Database;
+let dirty = false;
+let flushInterval: NodeJS.Timeout | null = null;
 
 const dbPath = process.env.DATABASE_PATH || './data/room.db';
+const flushIntervalMs = Number.parseInt(process.env.DB_FLUSH_INTERVAL_MS || '2000', 10);
+
+function ensureFlushInterval(): void {
+  if (flushInterval) return;
+
+  flushInterval = setInterval(() => {
+    try {
+      saveDb();
+    } catch (err) {
+      console.error('Periodic DB flush failed:', err);
+    }
+  }, Number.isFinite(flushIntervalMs) && flushIntervalMs > 0 ? flushIntervalMs : 2000);
+
+  if (typeof flushInterval.unref === 'function') {
+    flushInterval.unref();
+  }
+}
+
+export function stopDbPersistence(): void {
+  if (!flushInterval) return;
+  clearInterval(flushInterval);
+  flushInterval = null;
+}
 
 export async function getDb(): Promise<Database> {
   if (db) return db;
@@ -28,13 +53,16 @@ export async function getDb(): Promise<Database> {
 
   db.run('PRAGMA foreign_keys = ON');
   initializeDatabase(db);
-  saveDb();
+  dirty = true;
+  saveDb(true);
+  ensureFlushInterval();
 
   return db;
 }
 
-export function saveDb(): void {
+export function saveDb(force: boolean = false): void {
   if (!db) return;
+  if (!force && !dirty) return;
   const data = db.export();
   const buffer = Buffer.from(data);
   const dbDir = path.dirname(dbPath);
@@ -42,12 +70,17 @@ export function saveDb(): void {
     fs.mkdirSync(dbDir, { recursive: true });
   }
   fs.writeFileSync(dbPath, buffer);
+  dirty = false;
 }
 
-// Helper to run queries and auto-save
+export function flushDb(): void {
+  saveDb(true);
+}
+
+// Helper to run queries and mark DB dirty
 export function run(sql: string, params?: any[]): void {
   db.run(sql, params);
-  saveDb();
+  dirty = true;
 }
 
 export function get(sql: string, params?: any[]): any {

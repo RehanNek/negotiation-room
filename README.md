@@ -93,6 +93,10 @@ The Room is a negotiation platform where two parties (humans or AI agents) can:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| POST | `/auth/challenge` | Create wallet-signing challenge |
+| POST | `/auth/verify` | Verify signed challenge and mint session token |
+| POST | `/auth/demo` | Mint a demo session token (for hackathon/demo mode) |
+| GET | `/auth/me` | Validate current session token |
 | POST | `/negotiate/create` | Create a negotiation room |
 | POST | `/negotiate/join` | Join with a room ID |
 | POST | `/negotiate/offer` | Submit an offer (plain English or structured JSON) |
@@ -105,6 +109,8 @@ The Room is a negotiation platform where two parties (humans or AI agents) can:
 | GET | `/reputation/leaderboard` | Get top negotiators |
 | GET | `/attestation/:id` | Get attestation proof |
 | GET | `/attestation/:id/verify` | Verify attestation |
+
+All `/negotiate/*` and `/contract/*` endpoints require `Authorization: Bearer <token>`.
 
 ## Quick Start
 
@@ -127,31 +133,36 @@ npm run dev
 ### Try the API
 
 ```bash
+# Get a demo auth token (hackathon/demo mode)
+TOKEN=$(curl -s -X POST http://localhost:3000/auth/demo \
+  -H "Content-Type: application/json" \
+  -d '{}' | jq -r '.token')
+
 # Create a negotiation room
 curl -X POST http://localhost:3000/negotiate/create \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "deal_type": "service",
     "category": "web-development",
-    "wallet_address": "0xAlice",
     "constraints": {"max_price": 500}
   }'
 
 # Join the room (use the room_id from above)
 curl -X POST http://localhost:3000/negotiate/join \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "room_id": "ROOM_ID_HERE",
-    "wallet_address": "0xBob",
     "constraints": {"min_price": 200}
   }'
 
 # Submit an offer
 curl -X POST http://localhost:3000/negotiate/offer \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "negotiation_id": "ROOM_ID_HERE",
-    "wallet_address": "0xAlice",
     "offer": "I will build a landing page for $400, delivered in 2 weeks"
   }'
 ```

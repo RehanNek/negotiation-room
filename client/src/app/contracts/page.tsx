@@ -1,90 +1,210 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import ContractQueueCard from '@/components/ContractQueueCard';
+import EmptyState from '@/components/EmptyState';
+import InfoCallout from '@/components/InfoCallout';
 import WalletConnect from '@/components/WalletConnect';
-import ContractCard from '@/components/ContractCard';
 import { api } from '@/lib/api';
+import { parseContractFocus } from '@/lib/flow';
+import type { ContractViewModel } from '@/lib/types';
 
-export default function ContractsPage() {
+function ContractsWorkspace() {
+  const searchParams = useSearchParams();
   const [wallet, setWallet] = useState<string | null>(null);
-  const [contracts, setContracts] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<ContractViewModel[]>([]);
   const [loading, setLoading] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [affirmingId, setAffirmingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const handleConnect = useCallback((addr: string) => {
-    setWallet(addr || null);
+  const { focus, from } = useMemo(() => parseContractFocus(searchParams), [searchParams]);
+
+  const handleConnect = useCallback((address: string) => {
+    setWallet(address || null);
   }, []);
 
-  useEffect(() => {
-    if (!wallet) return;
+  const loadContracts = useCallback(async () => {
+    if (!wallet) {
+      setContracts([]);
+      return;
+    }
+
     setLoading(true);
-    api.getContractsByWallet(wallet)
-      .then(setContracts)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setError('');
+    try {
+      const list = await api.getContractsByWallet(wallet);
+      setContracts(list);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load contracts');
+      setContracts([]);
+    } finally {
+      setLoading(false);
+    }
   }, [wallet]);
 
+  useEffect(() => {
+    void loadContracts();
+  }, [loadContracts]);
+
+  useEffect(() => {
+    if (!focus || contracts.length === 0) return;
+    const element = document.getElementById(`contract-${focus}`);
+    if (!element) return;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focus, contracts]);
+
   async function handleResolve(contractId: string) {
+    setResolvingId(contractId);
+    setError('');
     try {
       await api.resolveCondition(contractId);
-      // Refresh
-      if (wallet) {
-        const updated = await api.getContractsByWallet(wallet);
-        setContracts(updated);
-      }
-    } catch (err: any) {
-      alert(err.message);
+      await loadContracts();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Resolution failed');
+    } finally {
+      setResolvingId(null);
     }
   }
 
-  const active = contracts.filter(c => c.status === 'active');
-  const pending = contracts.filter(c => c.status === 'pending_resolution');
-  const resolved = contracts.filter(c => c.status === 'resolved');
+  async function handleAffirmService(contractId: string) {
+    setAffirmingId(contractId);
+    setError('');
+    try {
+      await api.affirmServiceDelivery(contractId);
+      await loadContracts();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Affirmation failed');
+    } finally {
+      setAffirmingId(null);
+    }
+  }
+
+  const pending = contracts.filter((contract) => contract.status === 'pending_resolution');
+  const active = contracts.filter((contract) => contract.status === 'active');
+  const resolved = contracts.filter((contract) => contract.status === 'resolved');
+  const focusedContract = focus ? contracts.find((contract) => contract.id === focus) || null : null;
+  const verifyTarget = focusedContract?.attestation_id || null;
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">My Contracts</h1>
-        <WalletConnect onConnect={handleConnect} address={wallet} />
-      </div>
-
-      {!wallet && (
-        <p className="text-gray-400 text-center py-12">Connect your wallet to see your contracts.</p>
-      )}
-
-      {wallet && loading && (
-        <p className="text-gray-400 animate-pulse">Loading contracts...</p>
-      )}
-
-      {wallet && !loading && contracts.length === 0 && (
-        <p className="text-gray-500 text-center py-12">No contracts yet. Complete a negotiation to create one.</p>
-      )}
-
-      {pending.length > 0 && (
-        <div>
-          <h2 className="text-lg font-bold text-yellow-400 mb-3">Pending Resolution ({pending.length})</h2>
-          <div className="grid gap-4">
-            {pending.map(c => <ContractCard key={c.id} contract={c} onResolve={handleResolve} />)}
+    <div className="space-y-4 md:space-y-6">
+      <section className="card space-y-4 p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Contract Queue</h1>
+            <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
+              Rule execution queue for agreements reached without a middleman, from live contracts to attested outcomes.
+            </p>
           </div>
+          <WalletConnect onConnect={handleConnect} address={wallet} compact />
         </div>
-      )}
 
-      {active.length > 0 && (
-        <div>
-          <h2 className="text-lg font-bold text-green-400 mb-3">Active ({active.length})</h2>
-          <div className="grid gap-4">
-            {active.map(c => <ContractCard key={c.id} contract={c} />)}
-          </div>
-        </div>
-      )}
+        {from === 'deal' ? (
+          <InfoCallout
+            title="Deal handoff complete"
+            description="You arrived from a completed negotiation. Verify once backend attestation is available, then complete settlement attestation."
+            tone="success"
+          />
+        ) : null}
 
-      {resolved.length > 0 && (
-        <div>
-          <h2 className="text-lg font-bold text-blue-400 mb-3">Resolved ({resolved.length})</h2>
-          <div className="grid gap-4">
-            {resolved.map(c => <ContractCard key={c.id} contract={c} />)}
-          </div>
-        </div>
+        {focus ? (
+          <InfoCallout
+            title="Focused contract"
+            description="The highlighted contract is your immediate action target for verification or settlement."
+            tone="info"
+          >
+            {verifyTarget ? (
+              <Link href={`/verify?id=${verifyTarget}`} className="button-secondary text-xs">
+                Open Verify Workspace
+              </Link>
+            ) : (
+              <p className="text-xs text-[var(--muted-ink)]">
+                Backend attestation is not available yet for this contract.
+              </p>
+            )}
+          </InfoCallout>
+        ) : null}
+
+        {error ? <InfoCallout title="Contract queue warning" description={error} tone="danger" /> : null}
+      </section>
+
+      {!wallet ? (
+        <EmptyState
+          title="Connect to load contract queue"
+          description="Your queue is scoped to the authenticated wallet. Connect first to see pending actions and attested outcomes."
+        />
+      ) : loading ? (
+        <section className="card animate-pulse p-6 text-sm text-[var(--muted-ink)]">Loading contracts...</section>
+      ) : contracts.length === 0 ? (
+        <EmptyState
+          title="No contracts yet"
+          description="Complete a negotiation flow to generate the first contract record in your queue."
+          action={
+            <Link href="/negotiate" className="button-primary text-sm">
+              Start Negotiation
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          {pending.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Needs Action ({pending.length})</h2>
+              <div className="space-y-3">
+                {pending.map((contract) => (
+                  <ContractQueueCard
+                    key={contract.id}
+                    contract={contract}
+                    highlighted={focus === contract.id}
+                    walletAddress={wallet}
+                    onResolve={handleResolve}
+                    resolving={resolvingId === contract.id}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {active.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Active ({active.length})</h2>
+              <div className="space-y-3">
+                {active.map((contract) => (
+                  <ContractQueueCard
+                    key={contract.id}
+                    contract={contract}
+                    highlighted={focus === contract.id}
+                    walletAddress={wallet}
+                    onAffirmService={handleAffirmService}
+                    affirming={affirmingId === contract.id}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {resolved.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolved ({resolved.length})</h2>
+              <div className="space-y-3">
+                {resolved.map((contract) => (
+                  <ContractQueueCard key={contract.id} contract={contract} highlighted={focus === contract.id} walletAddress={wallet} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </>
       )}
     </div>
+  );
+}
+
+export default function ContractsPage() {
+  return (
+    <Suspense fallback={<section className="card p-6 text-sm text-[var(--muted-ink)]">Loading contract queue...</section>}>
+      <ContractsWorkspace />
+    </Suspense>
   );
 }

@@ -1,35 +1,37 @@
-import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { JetBrains_Mono, Manrope, Playfair_Display } from 'next/font/google';
+import MissionHeader from '@/components/MissionHeader';
+import './globals.css';
 
-const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const display = Playfair_Display({
+  subsets: ['latin'],
+  variable: '--font-display',
+  weight: ['600', '700'],
+});
+
+const sans = Manrope({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  weight: ['400', '500', '600', '700'],
+});
+
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  weight: ['400', '500'],
+});
 
 export const metadata: Metadata = {
-  title: "The Room — Verifiable Negotiation Infrastructure",
-  description: "Private, fair negotiations with TEE attestation on EigenCloud",
+  title: 'Negotiation Room — Verifiable Negotiation Infrastructure',
+  description: 'A verifiable room for private negotiation, conditional contracts, and attested fairness.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${mono.variable} bg-gray-950 text-white min-h-screen antialiased`}>
-        <nav className="border-b border-gray-800 px-6 py-4">
-          <div className="max-w-6xl mx-auto flex justify-between items-center">
-            <Link href="/" className="text-xl font-bold tracking-tight">
-              THE ROOM
-            </Link>
-            <div className="flex gap-6 text-sm">
-              <Link href="/negotiate" className="text-gray-400 hover:text-white transition">Negotiate</Link>
-              <Link href="/contracts" className="text-gray-400 hover:text-white transition">Contracts</Link>
-              <Link href="/profile" className="text-gray-400 hover:text-white transition">Profile</Link>
-              <Link href="/verify" className="text-gray-400 hover:text-white transition">Verify</Link>
-            </div>
-          </div>
-        </nav>
-        <main className="max-w-6xl mx-auto px-6 py-8">
-          {children}
-        </main>
+    <html lang="en">
+      <body className={`${display.variable} ${sans.variable} ${mono.variable} app-shell min-h-screen antialiased`}>
+        <MissionHeader />
+        <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-10">{children}</main>
       </body>
     </html>
   );

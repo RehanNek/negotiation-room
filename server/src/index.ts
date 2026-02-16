@@ -1,35 +1,28 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express from 'express';
-import cors from 'cors';
-import { getDb } from './db';
-import negotiateRoutes from './routes/negotiate';
-import contractRoutes from './routes/contract';
-import reputationRoutes from './routes/reputation';
-import attestationRoutes from './routes/attestation';
+import { createApp } from './app';
+import { flushDb, stopDbPersistence } from './db';
+
+function registerShutdownHandlers(): void {
+  const shutdown = (signal: string) => {
+    console.log(`Received ${signal}; flushing database before shutdown.`);
+    try {
+      flushDb();
+    } finally {
+      stopDbPersistence();
+      process.exit(0);
+    }
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
 
 async function main() {
-  // Initialize database
-  await getDb();
-  console.log('Database initialized');
-
-  const app = express();
+  registerShutdownHandlers();
+  const app = await createApp();
   const PORT = parseInt(process.env.PORT || '3000', 10);
-
-  app.use(cors());
-  app.use(express.json());
-
-  // Health check
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'the-room', timestamp: new Date().toISOString() });
-  });
-
-  // Routes
-  app.use('/negotiate', negotiateRoutes);
-  app.use('/contract', contractRoutes);
-  app.use('/reputation', reputationRoutes);
-  app.use('/attestation', attestationRoutes);
 
   app.listen(PORT, () => {
     console.log(`The Room server running on port ${PORT}`);
