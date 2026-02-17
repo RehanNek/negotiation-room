@@ -10,16 +10,6 @@ interface WalletConnectProps {
   compact?: boolean;
 }
 
-function isLegacyAuthFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const message = error.message.toLowerCase();
-  return (
-    message.includes('backend unavailable') ||
-    message.includes('cannot post /auth/') ||
-    message.includes('not found')
-  );
-}
-
 async function signMessage(addressToSign: string, message: string): Promise<string> {
   if (!window.ethereum) throw new Error('MetaMask not found');
 
@@ -43,25 +33,24 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
   useEffect(() => {
     const saved = localStorage.getItem('wallet_address');
     const token = localStorage.getItem('auth_token');
-    if (saved) {
-      onConnect(saved);
+    if (!saved || !token) {
+      localStorage.removeItem('wallet_address');
+      localStorage.removeItem('auth_token');
+      onConnect('');
+      return;
     }
-    if (!saved || !token) return;
 
     let mounted = true;
     api.me()
       .then((session) => {
         if (!mounted) return;
+        localStorage.setItem('wallet_address', session.wallet_address);
         onConnect(session.wallet_address || saved);
       })
       .catch(() => {
         if (!mounted) return;
-        localStorage.removeItem('auth_token');
-        if (saved) {
-          onConnect(saved);
-          return;
-        }
         localStorage.removeItem('wallet_address');
+        localStorage.removeItem('auth_token');
         onConnect('');
       });
 
@@ -92,10 +81,10 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
       localStorage.setItem('auth_token', session.token);
       onConnect(session.wallet_address);
     } catch (error: unknown) {
-      if (!isLegacyAuthFailure(error)) throw error;
-      localStorage.setItem('wallet_address', walletAddress);
+      localStorage.removeItem('wallet_address');
       localStorage.removeItem('auth_token');
-      onConnect(walletAddress);
+      onConnect('');
+      throw error;
     }
   }
 

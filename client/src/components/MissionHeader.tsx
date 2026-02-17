@@ -24,17 +24,9 @@ export default function MissionHeader() {
     const saved = localStorage.getItem('wallet_address');
     const token = localStorage.getItem('auth_token');
 
-    if (saved && !token) {
-      void Promise.resolve().then(() => {
-        if (!mounted) return;
-        setWallet(saved);
-        setMode(null);
-      });
-      return () => {
-        mounted = false;
-      };
-    }
     if (!saved || !token) {
+      localStorage.removeItem('wallet_address');
+      localStorage.removeItem('auth_token');
       void Promise.resolve().then(() => {
         if (!mounted) return;
         setWallet(null);
@@ -48,13 +40,15 @@ export default function MissionHeader() {
     api.me()
       .then((session) => {
         if (!mounted) return;
+        localStorage.setItem('wallet_address', session.wallet_address);
         setWallet(session.wallet_address || saved);
         setMode(session.mode);
       })
       .catch(() => {
         if (!mounted) return;
+        localStorage.removeItem('wallet_address');
         localStorage.removeItem('auth_token');
-        setWallet(saved || null);
+        setWallet(null);
         setMode(null);
       });
 

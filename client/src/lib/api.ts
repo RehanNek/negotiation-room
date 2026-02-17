@@ -49,9 +49,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const parsedBody: unknown = isJson ? await res.json().catch(() => null) : await res.text().catch(() => '');
 
   if (!res.ok) {
+    const apiError =
+      parsedBody && typeof parsedBody === 'object' && 'error' in parsedBody
+        ? (parsedBody as { error?: unknown }).error
+        : undefined;
+    const apiCode =
+      parsedBody && typeof parsedBody === 'object' && 'code' in parsedBody
+        ? (parsedBody as { code?: unknown }).code
+        : undefined;
+
+    if (
+      res.status === 401 &&
+      path !== '/auth/challenge' &&
+      path !== '/auth/verify' &&
+      typeof window !== 'undefined'
+    ) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('wallet_address');
+      throw new Error('Session expired. Please reconnect your wallet.');
+    }
+
     if (parsedBody && typeof parsedBody === 'object' && 'error' in parsedBody) {
-      const error = (parsedBody as { error?: unknown }).error;
-      throw new Error(typeof error === 'string' && error ? error : 'API request failed');
+      throw new Error(typeof apiError === 'string' && apiError ? apiError : 'API request failed');
+    }
+    if (typeof apiCode === 'string' && apiCode === 'UNAUTHORIZED') {
+      throw new Error('Session expired. Please reconnect your wallet.');
     }
     if (typeof parsedBody === 'string' && parsedBody.trim()) {
       throw new Error(parsedBody.trim());
