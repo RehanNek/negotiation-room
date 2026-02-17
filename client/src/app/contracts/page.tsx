@@ -18,7 +18,9 @@ function ContractsWorkspace() {
   const [loading, setLoading] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [affirmingId, setAffirmingId] = useState<string | null>(null);
+  const [fundingEscrowId, setFundingEscrowId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [dealRetryCount, setDealRetryCount] = useState(0);
 
   const { focus, from } = useMemo(() => parseContractFocus(searchParams), [searchParams]);
 
@@ -48,6 +50,24 @@ function ContractsWorkspace() {
   useEffect(() => {
     void loadContracts();
   }, [loadContracts]);
+
+  useEffect(() => {
+    setDealRetryCount(0);
+  }, [wallet, from, focus]);
+
+  useEffect(() => {
+    if (!wallet || from !== 'deal') return;
+    if (loading) return;
+    if (contracts.length > 0) return;
+    if (dealRetryCount >= 8) return;
+
+    const timer = window.setTimeout(() => {
+      setDealRetryCount((value) => value + 1);
+      void loadContracts();
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [wallet, from, loading, contracts.length, dealRetryCount, loadContracts]);
 
   useEffect(() => {
     if (!focus || contracts.length === 0) return;
@@ -82,20 +102,62 @@ function ContractsWorkspace() {
     }
   }
 
+  async function handleFundEscrow(contractId: string) {
+    if (!wallet) {
+      setError('Connect wallet before funding escrow.');
+      return;
+    }
+
+    setFundingEscrowId(contractId);
+    setError('');
+    try {
+      const prepared = await api.prepareEscrow(contractId);
+      const provider = typeof window !== 'undefined'
+        ? (window as Window & { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum
+        : undefined;
+      if (!provider) {
+        throw new Error('MetaMask is required to send escrow funding transaction.');
+      }
+
+      const txHash = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: wallet,
+            to: prepared.fund_tx.to,
+            value: `0x${BigInt(prepared.fund_tx.value_wei).toString(16)}`,
+            data: prepared.fund_tx.data,
+          },
+        ],
+      });
+
+      if (typeof txHash !== 'string' || !txHash.startsWith('0x')) {
+        throw new Error('Wallet did not return a valid transaction hash.');
+      }
+
+      await api.markEscrowFunded(contractId, txHash);
+      await loadContracts();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Escrow funding failed');
+    } finally {
+      setFundingEscrowId(null);
+    }
+  }
+
   const pending = contracts.filter((contract) => contract.status === 'pending_resolution');
   const active = contracts.filter((contract) => contract.status === 'active');
   const resolved = contracts.filter((contract) => contract.status === 'resolved');
   const focusedContract = focus ? contracts.find((contract) => contract.id === focus) || null : null;
-  const verifyTarget = focusedContract?.attestation_id || null;
+  const verifyTarget = focusedContract?.escrow?.attestation_id || focusedContract?.attestation_id || null;
 
   return (
     <div className="space-y-4 md:space-y-6">
       <section className="card space-y-4 p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Contract Queue</h1>
+            <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Your Contracts</h1>
             <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-              Rule execution queue for agreements reached without a middleman, from live contracts to attested outcomes.
+              Clear view of what was agreed, what action is next, and what proof is available.
             </p>
           </div>
           <WalletConnect onConnect={handleConnect} address={wallet} compact />
@@ -103,25 +165,29 @@ function ContractsWorkspace() {
 
         {from === 'deal' ? (
           <InfoCallout
-            title="Deal handoff complete"
-            description="You arrived from a completed negotiation. Verify once backend attestation is available, then complete settlement attestation."
+            title="Agreement saved"
+            description={
+              contracts.length === 0 && dealRetryCount < 8
+                ? 'Finalizing contract handoff. Fetching your latest agreement...'
+                : 'Your negotiation is now a contract. Open the highlighted contract and run the next action.'
+            }
             tone="success"
           />
         ) : null}
 
         {focus ? (
           <InfoCallout
-            title="Focused contract"
-            description="The highlighted contract is your immediate action target for verification or settlement."
+            title="Next contract to review"
+            description="This highlighted contract is where you should verify proof or complete settlement."
             tone="info"
           >
             {verifyTarget ? (
               <Link href={`/verify?id=${verifyTarget}`} className="button-secondary text-xs">
-                Open Verify Workspace
+                Open Verify Page
               </Link>
             ) : (
               <p className="text-xs text-[var(--muted-ink)]">
-                Backend attestation is not available yet for this contract.
+                Proof is not generated yet for this contract.
               </p>
             )}
           </InfoCallout>
@@ -133,14 +199,14 @@ function ContractsWorkspace() {
       {!wallet ? (
         <EmptyState
           title="Connect to load contract queue"
-          description="Your queue is scoped to the authenticated wallet. Connect first to see pending actions and attested outcomes."
+          description="Contracts are wallet-specific. Connect to load your agreements and next actions."
         />
       ) : loading ? (
         <section className="card animate-pulse p-6 text-sm text-[var(--muted-ink)]">Loading contracts...</section>
       ) : contracts.length === 0 ? (
         <EmptyState
           title="No contracts yet"
-          description="Complete a negotiation flow to generate the first contract record in your queue."
+          description="Finish a negotiation to create your first contract."
           action={
             <Link href="/negotiate" className="button-primary text-sm">
               Start Negotiation
@@ -160,7 +226,9 @@ function ContractsWorkspace() {
                     highlighted={focus === contract.id}
                     walletAddress={wallet}
                     onResolve={handleResolve}
+                    onFundEscrow={handleFundEscrow}
                     resolving={resolvingId === contract.id}
+                    fundingEscrow={fundingEscrowId === contract.id}
                   />
                 ))}
               </div>
@@ -179,6 +247,8 @@ function ContractsWorkspace() {
                     walletAddress={wallet}
                     onAffirmService={handleAffirmService}
                     affirming={affirmingId === contract.id}
+                    onFundEscrow={handleFundEscrow}
+                    fundingEscrow={fundingEscrowId === contract.id}
                   />
                 ))}
               </div>
@@ -190,7 +260,14 @@ function ContractsWorkspace() {
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolved ({resolved.length})</h2>
               <div className="space-y-3">
                 {resolved.map((contract) => (
-                  <ContractQueueCard key={contract.id} contract={contract} highlighted={focus === contract.id} walletAddress={wallet} />
+                  <ContractQueueCard
+                    key={contract.id}
+                    contract={contract}
+                    highlighted={focus === contract.id}
+                    walletAddress={wallet}
+                    onFundEscrow={handleFundEscrow}
+                    fundingEscrow={fundingEscrowId === contract.id}
+                  />
                 ))}
               </div>
             </section>

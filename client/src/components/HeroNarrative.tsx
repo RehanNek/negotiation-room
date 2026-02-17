@@ -11,17 +11,11 @@ export default function HeroNarrative() {
           <h1 className="font-display text-4xl leading-tight text-[var(--ink)] md:text-6xl">
             A private and verifiable negotiation room where parties reach agreement without a middleman.
           </h1>
-          <p className="max-w-2xl text-sm text-[var(--muted-ink)] md:text-base">
-            Built on EigenCloud TEE so rules execute privately, outcomes are attested, and no platform operator can interfere with the deal logic.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/negotiate" className="button-primary">
             Start Negotiation
-          </Link>
-          <Link href="/verify" className="button-ghost">
-            View Proof Verification
           </Link>
         </div>
       </div>

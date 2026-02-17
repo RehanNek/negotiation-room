@@ -129,16 +129,92 @@ function loadStoredPrivateInputs(negotiationId: string, walletAddress: string): 
   }
 }
 
+const ETH_WEI_BASE = BigInt('1000000000000000000');
+const BIGINT_ZERO = BigInt(0);
+
+function parseEthToWei(value: string): bigint | null {
+  const trimmed = value.trim();
+  if (!trimmed || !/^\d+(?:\.\d{1,18})?$/.test(trimmed)) return null;
+
+  const [wholePartRaw, fractionalRaw = ''] = trimmed.split('.');
+  const wholePart = BigInt(wholePartRaw || '0');
+  const fractionalPadded = `${fractionalRaw}000000000000000000`.slice(0, 18);
+  const fractionalPart = BigInt(fractionalPadded || '0');
+  return wholePart * ETH_WEI_BASE + fractionalPart;
+}
+
+function formatWeiAsEth(wei: bigint): string {
+  const whole = wei / ETH_WEI_BASE;
+  const fractional = wei % ETH_WEI_BASE;
+  if (fractional === BIGINT_ZERO) return whole.toString();
+  const fractionalText = fractional.toString().padStart(18, '0').replace(/0+$/, '');
+  return `${whole.toString()}.${fractionalText}`;
+}
+
+function normalizeEscrowAmountInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const wei = parseEthToWei(trimmed);
+  if (wei === null || wei <= BIGINT_ZERO) return null;
+  return formatWeiAsEth(wei);
+}
+
+function prefillEscrowAmountFromTerms(terms: Record<string, unknown> | null | undefined): string | null {
+  if (!terms || typeof terms !== 'object' || Array.isArray(terms)) return null;
+  const root = terms as Record<string, unknown>;
+  const agreed = root.agreed_terms && typeof root.agreed_terms === 'object' && !Array.isArray(root.agreed_terms)
+    ? (root.agreed_terms as Record<string, unknown>)
+    : {};
+
+  const weiCandidates = [
+    agreed.amount_wei,
+    agreed.escrow_amount_wei,
+    root.amount_wei,
+    root.escrow_amount_wei,
+  ];
+  for (const candidate of weiCandidates) {
+    if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) {
+      const wei = BigInt(candidate.trim());
+      if (wei > BIGINT_ZERO) return formatWeiAsEth(wei);
+    }
+  }
+
+  const ethCandidates = [
+    agreed.escrow_eth,
+    agreed.amount_eth,
+    root.escrow_eth,
+    root.amount_eth,
+  ];
+  for (const candidate of ethCandidates) {
+    if (candidate === null || candidate === undefined) continue;
+    const normalized = normalizeEscrowAmountInput(String(candidate));
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
 export default function NegotiationRoom({ negotiationId, walletAddress, onComplete }: NegotiationRoomProps) {
   const [negotiation, setNegotiation] = useState<NegotiationViewModel | null>(null);
   const [offer, setOffer] = useState('');
+  const [escrowAmountEth, setEscrowAmountEth] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
+  const [pendingTermsHash, setPendingTermsHash] = useState<string | null>(null);
+  const [pendingTermsDraft, setPendingTermsDraft] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [suggestion, setSuggestion] = useState<NegotiationSuggestion | null>(null);
   const [shareFeedback, setShareFeedback] = useState('');
   const completionNotified = useRef(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    completionNotified.current = false;
+  }, [negotiationId, walletAddress]);
+
+  useEffect(() => {
+    setEscrowAmountEth('');
+  }, [negotiationId, walletAddress]);
 
   const notifyCompletion = useCallback(
     (status: NegotiationStatus, contractId?: string) => {
@@ -149,17 +225,36 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     [negotiationId, onComplete]
   );
 
+  const resolveContractIdForNegotiation = useCallback(async (): Promise<string | undefined> => {
+    try {
+      const contracts = await api.getContractsByWallet(walletAddress);
+      const match = contracts
+        .filter((contract) => contract.negotiation_id === negotiationId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      return match?.id;
+    } catch {
+      return undefined;
+    }
+  }, [negotiationId, walletAddress]);
+
   const poll = useCallback(async () => {
     try {
       const status = await api.getNegotiationStatus(negotiationId);
       setNegotiation(status);
-      if (status.status === 'deal' || status.status === 'impasse' || status.status === 'no_deal') {
+      if (status.status === 'deal') {
+        const contractId = await resolveContractIdForNegotiation();
+        if (contractId) {
+          notifyCompletion('deal', contractId);
+        }
+        return;
+      }
+      if (status.status === 'impasse' || status.status === 'no_deal') {
         notifyCompletion(status.status);
       }
     } catch (err) {
       console.error('Negotiation poll failed:', err);
     }
-  }, [negotiationId, notifyCompletion]);
+  }, [negotiationId, notifyCompletion, resolveContractIdForNegotiation]);
 
   useEffect(() => {
     void poll();
@@ -177,6 +272,11 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     if (!negotiation) return 'B';
     return walletAddress === negotiation.party_a_wallet ? 'A' : 'B';
   }, [negotiation, walletAddress]);
+
+  const isSelfNegotiation = useMemo(
+    () => Boolean(negotiation && negotiation.party_a_wallet.toLowerCase() === (negotiation.party_b_wallet || '').toLowerCase()),
+    [negotiation]
+  );
 
   const statusCopy = negotiation ? negotiationStatusCopy(negotiation.status) : null;
 
@@ -213,6 +313,31 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     const key = `private_inputs:${negotiationId}:${walletAddress.toLowerCase()}`;
     localStorage.setItem(key, JSON.stringify(constraints));
   }, [negotiation?.private_constraints, negotiationId, walletAddress]);
+
+  useEffect(() => {
+    if (!negotiation) return;
+
+    const serverTermsHash = negotiation.final_terms_hash || null;
+    if (!serverTermsHash) {
+      setPendingTermsHash(null);
+      setPendingTermsDraft(null);
+      return;
+    }
+
+    setPendingTermsHash(serverTermsHash);
+    if (negotiation.final_terms_draft && typeof negotiation.final_terms_draft === 'object') {
+      setPendingTermsDraft(negotiation.final_terms_draft as Record<string, unknown>);
+    }
+  }, [negotiation]);
+
+  useEffect(() => {
+    if (escrowAmountEth.trim()) return;
+    const termsDraft = (negotiation?.final_terms_draft as Record<string, unknown> | null | undefined) || pendingTermsDraft;
+    const prefilled = prefillEscrowAmountFromTerms(termsDraft);
+    if (prefilled) {
+      setEscrowAmountEth(prefilled);
+    }
+  }, [escrowAmountEth, negotiation?.final_terms_draft, pendingTermsDraft]);
 
   function showShareFeedback(message: string) {
     setShareFeedback(message);
@@ -264,6 +389,8 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         setSuggestion(null);
       }
       setOffer('');
+      setPendingTermsHash(null);
+      setPendingTermsDraft(null);
       await poll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to submit offer');
@@ -273,10 +400,29 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   }
 
   async function handleDone() {
+    const normalizedEscrowAmount = normalizeEscrowAmountInput(escrowAmountEth);
+    if (!normalizedEscrowAmount) {
+      setError('Enter a valid escrow amount in ETH before confirming done.');
+      return;
+    }
+
     setMarkingDone(true);
     setError('');
     try {
-      const result = await api.completeNegotiation({ negotiation_id: negotiationId });
+      setEscrowAmountEth(normalizedEscrowAmount);
+      const result = await api.completeNegotiation({
+        negotiation_id: negotiationId,
+        terms_hash: negotiation?.final_terms_hash || pendingTermsHash || undefined,
+        escrow_amount_eth: normalizedEscrowAmount,
+      });
+
+      if (result.status === 'awaiting_other_party_confirmation') {
+        setPendingTermsHash(result.terms_hash);
+        setPendingTermsDraft(result.terms_draft);
+        await poll();
+        return;
+      }
+
       await poll();
       notifyCompletion('deal', result.contract?.id);
     } catch (err: unknown) {
@@ -312,6 +458,24 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     ? serverPrivateInputs
     : storedPrivateInputs;
   const hasPrivateInputs = Object.keys(myPrivateInputs).length > 0;
+  const termsHash = negotiation.final_terms_hash || pendingTermsHash;
+  const termsDraft = (negotiation.final_terms_draft as Record<string, unknown> | null | undefined) || pendingTermsDraft;
+  const partyAConfirmed = Boolean(
+    termsHash &&
+      negotiation.party_a_confirmed_terms_hash &&
+      negotiation.party_a_confirmed_terms_hash === termsHash
+  );
+  const partyBConfirmed = Boolean(
+    termsHash &&
+      negotiation.party_b_confirmed_terms_hash &&
+      negotiation.party_b_confirmed_terms_hash === termsHash
+  );
+  const myConfirmed = role === 'A' ? partyAConfirmed : partyBConfirmed;
+  const otherConfirmed = role === 'A' ? partyBConfirmed : partyAConfirmed;
+  const doneButtonLabel = myConfirmed && !otherConfirmed
+    ? 'Waiting For Other Party'
+    : 'Confirm Terms & Done';
+  const normalizedEscrowAmount = normalizeEscrowAmountInput(escrowAmountEth);
 
   return (
     <section className="grid gap-4 lg:grid-cols-[1.75fr_1fr]">
@@ -451,6 +615,48 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         <footer className="border-t border-[var(--line)] bg-white/85 p-3 md:p-4">
           {negotiation.status === 'active' ? (
             <div className="space-y-3">
+              {termsDraft && termsHash ? (
+                <div className="space-y-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                      Draft Terms To Confirm
+                    </p>
+                    <code className="text-[11px] text-[var(--muted-ink)]">
+                      {termsHash.slice(0, 12)}...{termsHash.slice(-8)}
+                    </code>
+                  </div>
+                  <OfferTermsView terms={termsDraft} compact title="Shared Draft Terms" />
+                  <div className="grid gap-2 text-xs md:grid-cols-2">
+                    <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
+                      {isSelfNegotiation ? 'Party A (you):' : `Party A (${role === 'A' ? 'you' : 'counterparty'}):`}{' '}
+                      <span className="font-semibold">{partyAConfirmed ? 'Confirmed' : 'Pending'}</span>
+                    </p>
+                    <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
+                      {isSelfNegotiation ? 'Party B (you):' : `Party B (${role === 'B' ? 'you' : 'counterparty'}):`}{' '}
+                      <span className="font-semibold">{partyBConfirmed ? 'Confirmed' : 'Pending'}</span>
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Confirm Escrow Amount (ETH)
+                  </span>
+                  <input
+                    value={escrowAmountEth}
+                    onChange={(event) => setEscrowAmountEth(event.target.value)}
+                    placeholder="0.01"
+                    inputMode="decimal"
+                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+                <p className="mt-2 text-xs text-[var(--muted-ink)]">
+                  Both parties must confirm the same escrow amount before the contract is finalized.
+                </p>
+              </div>
+
               <div className="flex items-end gap-2">
                 <textarea
                   value={offer}
@@ -472,10 +678,16 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                 <button
                   type="button"
                   onClick={handleDone}
-                  disabled={submitting || markingDone || !canSendMessage}
+                  disabled={
+                    submitting ||
+                    markingDone ||
+                    !canSendMessage ||
+                    !normalizedEscrowAmount ||
+                    (myConfirmed && !otherConfirmed)
+                  }
                   className="button-secondary text-xs"
                 >
-                  {markingDone ? 'Finalizing...' : 'Done'}
+                  {markingDone ? 'Confirming...' : doneButtonLabel}
                 </button>
                 <button
                   type="button"

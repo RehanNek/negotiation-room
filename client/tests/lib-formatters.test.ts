@@ -1,8 +1,12 @@
 import {
   buildReadableContractSummary,
+  extractMissingTerms,
+  formatMissingTermLabel,
+  formatWeiToEth,
   formatRelativeStatusHint,
   formatTimestamp,
   formatWallet,
+  selectDisplayTerms,
   stringifyRaw,
   summarizeOfferTerms,
 } from '@/lib/formatters';
@@ -18,7 +22,7 @@ describe('formatters', () => {
     });
 
     expect(summary).toEqual([
-      { key: 'max_price', label: 'Max Price', value: '500.50' },
+      { key: 'max_price', label: 'Max Price', value: '500.5' },
       { key: 'is_binding', label: 'Is Binding', value: 'Yes' },
       { key: 'tags', label: 'Tags', value: 'fast, private' },
       { key: 'metadata', label: 'Metadata', value: 'Tier: gold' },
@@ -46,8 +50,14 @@ describe('formatters', () => {
     expect(formatTimestamp('not-a-date')).toBe('not-a-date');
   });
 
+  it('formats wei amounts into ETH string safely', () => {
+    expect(formatWeiToEth('1000000000000000000')).toBe('1 ETH');
+    expect(formatWeiToEth('25000000000000000')).toBe('0.025 ETH');
+    expect(formatWeiToEth(undefined)).toBe('n/a');
+  });
+
   it('maps relative status hints', () => {
-    expect(formatRelativeStatusHint('pending_resolution')).toBe('Ready for condition resolution.');
+    expect(formatRelativeStatusHint('pending_resolution')).toBe('Rule check required before final outcome.');
     expect(formatRelativeStatusHint('active')).toBe('Live and accepting actions.');
   });
 
@@ -61,5 +71,23 @@ describe('formatters', () => {
   it('retains clean contract summaries', () => {
     const clean = 'Service agreement to deliver violin lessons this week for 2 ETH.';
     expect(buildReadableContractSummary('service', clean, { amount: 2, token: 'ETH' })).toBe(clean);
+  });
+
+  it('prefers agreed terms and exposes missing-term labels', () => {
+    const selected = selectDisplayTerms({
+      agreed_terms: {
+        deliverables: '3 lessons',
+        price_amount: 220,
+        currency: 'USD',
+      },
+      missing_terms: ['timeline_or_schedule'],
+    }) as Record<string, unknown>;
+
+    expect(selected.deliverables).toBe('3 lessons');
+    expect(extractMissingTerms({ missing_terms: ['timeline_or_schedule', 'timeline_or_schedule', 'price'] })).toEqual([
+      'timeline_or_schedule',
+      'price',
+    ]);
+    expect(formatMissingTermLabel('timeline_or_schedule')).toBe('Timeline or schedule');
   });
 });

@@ -14,6 +14,9 @@ import type {
   NegotiationViewModel,
   ReputationViewModel,
   ResolveConditionResponse,
+  EscrowPrepareResponse,
+  EscrowViewModel,
+  EscrowFundedResponse,
   SubmitOfferPayload,
   SubmitOfferResponse,
 } from './types';
@@ -147,6 +150,14 @@ export const api = {
     request<ResolveConditionResponse>(`/contract/${id}/resolve`, { method: 'POST' }),
   affirmServiceDelivery: (id: string) =>
     request<AffirmServiceResponse>(`/contract/${id}/affirm`, { method: 'POST' }),
+  prepareEscrow: (id: string) =>
+    request<EscrowPrepareResponse>(`/contract/${id}/escrow/prepare`, { method: 'POST' }),
+  markEscrowFunded: (id: string, tx_hash: string) =>
+    request<EscrowFundedResponse>(`/contract/${id}/escrow/funded`, {
+      method: 'POST',
+      body: JSON.stringify({ tx_hash }),
+    }),
+  getEscrow: (id: string) => request<EscrowViewModel>(`/contract/${id}/escrow`),
 
   getReputation: (wallet: string) => request<ReputationViewModel>(`/reputation/${wallet}`),
   getLeaderboard: (limit?: number) => request<ReputationViewModel[]>(`/reputation/leaderboard?limit=${limit || 10}`),

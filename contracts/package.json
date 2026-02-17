@@ -1,0 +1,26 @@
+{
+  "name": "the-room-escrow-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:sepolia": "hardhat run scripts/deploy-sepolia.ts --network sepolia",
+    "export:abi": "tsx scripts/export-abi.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
+    "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.1.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.0",
+    "chai": "^4.5.0",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.15.0",
+    "hardhat": "^2.26.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

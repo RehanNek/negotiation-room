@@ -3,6 +3,7 @@ dotenv.config();
 
 import { createApp } from './app';
 import { flushDb, stopDbPersistence } from './db';
+import { startEscrowScheduler, stopEscrowScheduler } from './services/escrow';
 
 function registerShutdownHandlers(): void {
   const shutdown = (signal: string) => {
@@ -10,6 +11,7 @@ function registerShutdownHandlers(): void {
     try {
       flushDb();
     } finally {
+      stopEscrowScheduler();
       stopDbPersistence();
       process.exit(0);
     }
@@ -22,6 +24,7 @@ function registerShutdownHandlers(): void {
 async function main() {
   registerShutdownHandlers();
   const app = await createApp();
+  startEscrowScheduler();
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.listen(PORT, () => {

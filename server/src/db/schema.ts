@@ -14,6 +14,12 @@ export function initializeDatabase(db: Database): void {
       party_b_wallet TEXT,
       party_a_constraints TEXT NOT NULL DEFAULT '{}',
       party_b_constraints TEXT,
+      final_terms_draft TEXT,
+      final_terms_hash TEXT,
+      party_a_confirmed_terms_hash TEXT,
+      party_b_confirmed_terms_hash TEXT,
+      party_a_done_at TEXT,
+      party_b_done_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -49,6 +55,9 @@ export function initializeDatabase(db: Database): void {
       verdict TEXT CHECK(verdict IN ('TRUE', 'FALSE', 'PENDING') OR verdict IS NULL),
       verdict_reasoning TEXT,
       attestation_id TEXT,
+      terms_hash TEXT,
+      confirmed_by_a_at TEXT,
+      confirmed_by_b_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       resolved_at TEXT,
       FOREIGN KEY (negotiation_id) REFERENCES negotiations(id)
@@ -96,4 +105,56 @@ export function initializeDatabase(db: Database): void {
       FOREIGN KEY (contract_id) REFERENCES contracts(id)
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS escrows (
+      id TEXT PRIMARY KEY,
+      contract_id TEXT NOT NULL UNIQUE,
+      deal_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'awaiting_funding' CHECK(status IN ('awaiting_funding', 'funded', 'released', 'refunded', 'failed')),
+      chain_id INTEGER NOT NULL,
+      asset TEXT NOT NULL DEFAULT 'ETH',
+      amount_wei TEXT NOT NULL,
+      payer_wallet TEXT NOT NULL,
+      recipient_if_true_wallet TEXT NOT NULL,
+      recipient_if_false_wallet TEXT NOT NULL,
+      timeout_at TEXT NOT NULL,
+      contract_address TEXT NOT NULL,
+      fund_tx_hash TEXT,
+      fund_block_number INTEGER,
+      settle_tx_hash TEXT,
+      refund_tx_hash TEXT,
+      attestation_id TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (contract_id) REFERENCES contracts(id)
+    )
+  `);
+
+  // Additive migrations for already-initialized databases.
+  addColumnIfMissing(db, 'negotiations', 'final_terms_draft', 'TEXT');
+  addColumnIfMissing(db, 'negotiations', 'final_terms_hash', 'TEXT');
+  addColumnIfMissing(db, 'negotiations', 'party_a_confirmed_terms_hash', 'TEXT');
+  addColumnIfMissing(db, 'negotiations', 'party_b_confirmed_terms_hash', 'TEXT');
+  addColumnIfMissing(db, 'negotiations', 'party_a_done_at', 'TEXT');
+  addColumnIfMissing(db, 'negotiations', 'party_b_done_at', 'TEXT');
+  addColumnIfMissing(db, 'contracts', 'terms_hash', 'TEXT');
+  addColumnIfMissing(db, 'contracts', 'confirmed_by_a_at', 'TEXT');
+  addColumnIfMissing(db, 'contracts', 'confirmed_by_b_at', 'TEXT');
+}
+
+function addColumnIfMissing(db: Database, tableName: string, columnName: string, sqlType: string): void {
+  const stmt = db.prepare(`PRAGMA table_info(${tableName})`);
+  let existing = false;
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as Record<string, unknown>;
+    if (String(row.name || '') === columnName) {
+      existing = true;
+      break;
+    }
+  }
+  stmt.free();
+  if (existing) return;
+  db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${sqlType}`);
 }

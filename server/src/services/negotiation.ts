@@ -1,11 +1,24 @@
 import { v4 as uuidv4 } from 'uuid';
+import { formatEther, parseEther } from 'viem';
 import { run, get, all, flushDb } from '../db';
-import { parseOfferToStructured, generateSuggestion, generateContractSummary } from './ai';
+import {
+  parseOfferToStructured,
+  generateSuggestion,
+  generateContractSummary,
+  extractNegotiatedTerms,
+} from './ai';
 import { createContract, getContract } from './contract';
 import { updateReputation } from './reputation';
-import { conflict, forbidden, notFound } from '../errors';
+import { badRequest, conflict, forbidden, notFound } from '../errors';
 import { isDemoModeEnabled } from './auth';
-import type { CreateNegotiationRequest, JoinNegotiationRequest, SubmitOfferRequest } from '../types';
+import { computeTermsHash } from './terms';
+import type {
+  CreateNegotiationRequest,
+  FinalizeNegotiationPendingResult,
+  FinalizeNegotiationResult,
+  JoinNegotiationRequest,
+  SubmitOfferRequest,
+} from '../types';
 
 interface FinalRoundSnapshot {
   party: string;
@@ -13,59 +26,125 @@ interface FinalRoundSnapshot {
   offer_raw?: string;
 }
 
-function areValuesEqual(left: unknown, right: unknown): boolean {
-  try {
-    return JSON.stringify(left) === JSON.stringify(right);
-  } catch {
-    return false;
+function normalizeEscrowAmountEthInput(value: string): { amountEth: string; amountWei: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw badRequest('escrow_amount_eth is required before confirming done');
   }
+
+  let wei: bigint;
+  try {
+    wei = parseEther(trimmed);
+  } catch {
+    throw badRequest('escrow_amount_eth must be a valid ETH amount');
+  }
+
+  if (wei <= 0n) {
+    throw badRequest('escrow_amount_eth must be greater than zero');
+  }
+
+  return {
+    amountEth: formatEther(wei),
+    amountWei: wei.toString(),
+  };
 }
 
-function buildFinalTerms(rounds: FinalRoundSnapshot[]): Record<string, any> {
-  const lastA = [...rounds].reverse().find((round) => round.party === 'A');
-  const lastB = [...rounds].reverse().find((round) => round.party === 'B');
+function extractEscrowAmountWei(terms: Record<string, any>): bigint | null {
+  const agreed = terms.agreed_terms && typeof terms.agreed_terms === 'object' && !Array.isArray(terms.agreed_terms)
+    ? (terms.agreed_terms as Record<string, any>)
+    : {};
 
-  if (!lastA && !lastB) return {};
+  const weiCandidates = [
+    agreed.amount_wei,
+    terms.amount_wei,
+    agreed.escrow_amount_wei,
+    terms.escrow_amount_wei,
+  ];
 
-  if (lastA && !lastB) {
-    return {
-      agreed_terms: lastA.offer_structured,
-      party_a_offer: lastA.offer_structured,
-      party_a_message: lastA.offer_raw || null,
-    };
-  }
-
-  if (!lastA && lastB) {
-    return {
-      agreed_terms: lastB.offer_structured,
-      party_b_offer: lastB.offer_structured,
-      party_b_message: lastB.offer_raw || null,
-    };
-  }
-
-  const shared: Record<string, any> = {};
-  const keys = new Set<string>([
-    ...Object.keys(lastA?.offer_structured || {}),
-    ...Object.keys(lastB?.offer_structured || {}),
-  ]);
-
-  for (const key of keys) {
-    const aValue = lastA?.offer_structured?.[key];
-    const bValue = lastB?.offer_structured?.[key];
-    if (aValue !== undefined && bValue !== undefined && areValuesEqual(aValue, bValue)) {
-      shared[key] = aValue;
+  for (const candidate of weiCandidates) {
+    if (typeof candidate === 'string' && /^\d+$/.test(candidate.trim())) {
+      const value = BigInt(candidate.trim());
+      if (value > 0n) return value;
+    }
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+      return BigInt(Math.trunc(candidate));
     }
   }
+
+  const ethCandidates = [
+    agreed.escrow_eth,
+    agreed.amount_eth,
+    terms.escrow_eth,
+    terms.amount_eth,
+  ];
+
+  for (const candidate of ethCandidates) {
+    if (candidate === null || candidate === undefined) continue;
+    const asString = String(candidate).trim();
+    if (!asString) continue;
+    try {
+      const parsed = parseEther(asString);
+      if (parsed > 0n) return parsed;
+    } catch {
+      // skip invalid candidate
+    }
+  }
+
+  return null;
+}
+
+function applyEscrowAmountToTerms(terms: Record<string, any>, amountEth: string, amountWei: string): Record<string, any> {
+  const next: Record<string, any> = { ...terms };
+  const agreedSource = next.agreed_terms && typeof next.agreed_terms === 'object' && !Array.isArray(next.agreed_terms)
+    ? (next.agreed_terms as Record<string, any>)
+    : {};
+
+  next.agreed_terms = {
+    ...agreedSource,
+    escrow_eth: amountEth,
+    amount_wei: amountWei,
+  };
+
+  next.escrow_eth = amountEth;
+  next.amount_wei = amountWei;
+  return next;
+}
+
+async function buildFinalTerms(
+  rounds: FinalRoundSnapshot[],
+  dealType: string,
+  category: string
+): Promise<Record<string, any>> {
+  const lastA = [...rounds].reverse().find((round) => round.party === 'A');
+  const lastB = [...rounds].reverse().find((round) => round.party === 'B');
+  const extracted = await extractNegotiatedTerms(rounds, dealType, category);
+
+  if (!lastA && !lastB) return {};
 
   const terms: Record<string, any> = {
     party_a_offer: lastA?.offer_structured || {},
     party_b_offer: lastB?.offer_structured || {},
     party_a_message: lastA?.offer_raw || null,
     party_b_message: lastB?.offer_raw || null,
+    agreed_terms: extracted.agreed_terms,
+    missing_terms: extracted.missing_terms,
+    term_extraction_confidence: extracted.confidence,
   };
 
-  if (Object.keys(shared).length > 0) {
-    terms.agreed_terms = shared;
+  const agreedTerms = extracted.agreed_terms || {};
+  if (typeof agreedTerms === 'object' && agreedTerms !== null) {
+    if (agreedTerms.price_amount !== undefined && agreedTerms.price_amount !== null) {
+      terms.amount = agreedTerms.price_amount;
+    }
+    if (agreedTerms.currency !== undefined && agreedTerms.currency !== null) {
+      terms.currency = agreedTerms.currency;
+    }
+    if (agreedTerms.timeline) {
+      terms.timeline = agreedTerms.timeline;
+    }
+    if (agreedTerms.deadline) {
+      terms.deadline = agreedTerms.deadline;
+    }
   }
 
   return terms;
@@ -174,7 +253,19 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
     `INSERT INTO rounds (id, negotiation_id, round_number, party, offer_raw, offer_structured, ai_suggestion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [roundId, req.negotiation_id, messageIndex, party, offerRaw, JSON.stringify(offerStructured), null]
   );
-  run(`UPDATE negotiations SET current_round = ?, updated_at = datetime('now') WHERE id = ?`, [messageIndex, req.negotiation_id]);
+  run(
+    `UPDATE negotiations
+     SET current_round = ?,
+         final_terms_draft = NULL,
+         final_terms_hash = NULL,
+         party_a_confirmed_terms_hash = NULL,
+         party_b_confirmed_terms_hash = NULL,
+         party_a_done_at = NULL,
+         party_b_done_at = NULL,
+         updated_at = datetime('now')
+     WHERE id = ?`,
+    [messageIndex, req.negotiation_id]
+  );
 
   const suggestion = await generateSuggestion(
     neg.category as string,
@@ -193,15 +284,18 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   };
 }
 
-export async function finalizeNegotiationDeal(negotiationId: string, walletAddress: string): Promise<{
-  status: 'deal';
-  contract: any;
-}> {
+export async function finalizeNegotiationDeal(
+  negotiationId: string,
+  walletAddress: string,
+  providedTermsHash?: string,
+  providedEscrowAmountEth?: string
+): Promise<FinalizeNegotiationResult> {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
   if (!neg) throw notFound('Negotiation not found');
   if (walletAddress !== neg.party_a_wallet && walletAddress !== neg.party_b_wallet) {
     throw forbidden('You are not a participant in this negotiation');
   }
+  const confirmedEscrow = normalizeEscrowAmountEthInput(providedEscrowAmountEth || '');
 
   if (neg.status === 'waiting') {
     throw conflict('Counterparty has not joined this negotiation');
@@ -246,18 +340,125 @@ export async function finalizeNegotiationDeal(negotiationId: string, walletAddre
     }
   }
 
-  run(`UPDATE negotiations SET status = 'deal', updated_at = datetime('now') WHERE id = ?`, [negotiationId]);
-  const contract = await finalizeContract(neg, rounds);
-  updateReputation(neg.party_a_wallet as string, 'deal', rounds.length);
-  updateReputation(neg.party_b_wallet as string, 'deal', rounds.length);
+  let termsDraft: Record<string, any> = {};
+  let termsHash = typeof neg.final_terms_hash === 'string' && neg.final_terms_hash.trim()
+    ? String(neg.final_terms_hash)
+    : '';
+
+  if (typeof neg.final_terms_draft === 'string' && neg.final_terms_draft.trim()) {
+    try {
+      const parsed = JSON.parse(neg.final_terms_draft as string);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        termsDraft = parsed as Record<string, any>;
+      }
+    } catch {
+      termsDraft = {};
+    }
+  }
+
+  let mustPersistDraft = false;
+
+  if (!termsHash || Object.keys(termsDraft).length === 0) {
+    termsDraft = await buildFinalTerms(rounds, neg.deal_type as string, neg.category as string);
+    mustPersistDraft = true;
+  }
+
+  const existingEscrowWei = extractEscrowAmountWei(termsDraft);
+  if (existingEscrowWei !== null && existingEscrowWei !== BigInt(confirmedEscrow.amountWei)) {
+    throw conflict(
+      `Escrow amount mismatch. Confirm ${formatEther(existingEscrowWei)} ETH or send a new offer before confirming done.`
+    );
+  }
+
+  termsDraft = applyEscrowAmountToTerms(termsDraft, confirmedEscrow.amountEth, confirmedEscrow.amountWei);
+  const recomputedTermsHash = computeTermsHash(termsDraft);
+  if (!termsHash || termsHash !== recomputedTermsHash) {
+    termsHash = recomputedTermsHash;
+    mustPersistDraft = true;
+  }
+
+  if (mustPersistDraft) {
+    run(
+      `UPDATE negotiations SET final_terms_draft = ?, final_terms_hash = ?, updated_at = datetime('now') WHERE id = ?`,
+      [JSON.stringify(termsDraft), termsHash, negotiationId]
+    );
+  }
+
+  if (providedTermsHash && providedTermsHash.trim() && providedTermsHash.trim() !== termsHash) {
+    throw conflict('Terms hash mismatch. Refresh draft terms and confirm again.');
+  }
+
+  const confirmationTime = new Date().toISOString();
+  const requesterParty: 'A' | 'B' = walletAddress === neg.party_a_wallet ? 'A' : 'B';
+  const isSelfNegotiation = neg.party_a_wallet === neg.party_b_wallet;
+
+  if (isSelfNegotiation) {
+    run(
+      `UPDATE negotiations
+       SET party_a_confirmed_terms_hash = ?,
+           party_b_confirmed_terms_hash = ?,
+           party_a_done_at = ?,
+           party_b_done_at = ?,
+           status = 'deal',
+           updated_at = datetime('now')
+       WHERE id = ?`,
+      [termsHash, termsHash, confirmationTime, confirmationTime, negotiationId]
+    );
+  } else if (requesterParty === 'A') {
+    run(
+      `UPDATE negotiations
+       SET party_a_confirmed_terms_hash = ?, party_a_done_at = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      [termsHash, confirmationTime, negotiationId]
+    );
+  } else {
+    run(
+      `UPDATE negotiations
+       SET party_b_confirmed_terms_hash = ?, party_b_done_at = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      [termsHash, confirmationTime, negotiationId]
+    );
+  }
+
+  const refreshed = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
+  if (!refreshed) throw notFound('Negotiation not found');
+
+  const partyAConfirmed = refreshed.party_a_confirmed_terms_hash as string | null;
+  const partyBConfirmed = refreshed.party_b_confirmed_terms_hash as string | null;
+  const bothConfirmed =
+    typeof partyAConfirmed === 'string' &&
+    typeof partyBConfirmed === 'string' &&
+    partyAConfirmed === termsHash &&
+    partyBConfirmed === termsHash;
+
+  if (!bothConfirmed) {
+    flushDb();
+    const pending: FinalizeNegotiationPendingResult = {
+      status: 'awaiting_other_party_confirmation',
+      negotiation_id: negotiationId,
+      terms_hash: termsHash,
+      terms_draft: termsDraft,
+      confirmed_by_party: requesterParty,
+    };
+    return pending;
+  }
+
+  const contract = await finalizeContract(refreshed, rounds, termsDraft, termsHash);
+  updateReputation(refreshed.party_a_wallet as string, 'deal', rounds.length);
+  updateReputation(refreshed.party_b_wallet as string, 'deal', rounds.length);
   flushDb();
 
   return { status: 'deal', contract };
 }
 
-async function finalizeContract(neg: any, rounds: FinalRoundSnapshot[]): Promise<any> {
-  const terms = buildFinalTerms(rounds);
-
+async function finalizeContract(
+  neg: any,
+  rounds: FinalRoundSnapshot[],
+  termsInput?: Record<string, any>,
+  termsHashInput?: string
+): Promise<any> {
+  const terms = termsInput || (await buildFinalTerms(rounds, neg.deal_type as string, neg.category as string));
+  const termsHash = termsHashInput || computeTermsHash(terms);
   const summary = await generateContractSummary(terms, neg.deal_type as string, neg.category as string);
   const params = JSON.parse(neg.params as string);
 
@@ -271,6 +472,9 @@ async function finalizeContract(neg: any, rounds: FinalRoundSnapshot[]): Promise
     condition_desc: params.condition,
     condition_data_source: params.data_source,
     resolution_date: params.resolution_date,
+    terms_hash: termsHash,
+    confirmed_by_a_at: (neg.party_a_done_at as string) || null,
+    confirmed_by_b_at: (neg.party_b_done_at as string) || null,
   });
 }
 
@@ -334,6 +538,20 @@ export function getNegotiationStatus(negotiationId: string, requesterWallet?: st
     current_round: neg.current_round,
     party_a_wallet: neg.party_a_wallet,
     party_b_wallet: neg.party_b_wallet,
+    final_terms_draft: (() => {
+      if (typeof neg.final_terms_draft !== 'string' || !neg.final_terms_draft.trim()) return null;
+      try {
+        const parsed = JSON.parse(neg.final_terms_draft as string);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch {
+        return null;
+      }
+    })(),
+    final_terms_hash: neg.final_terms_hash || null,
+    party_a_confirmed_terms_hash: neg.party_a_confirmed_terms_hash || null,
+    party_b_confirmed_terms_hash: neg.party_b_confirmed_terms_hash || null,
+    party_a_done_at: neg.party_a_done_at || null,
+    party_b_done_at: neg.party_b_done_at || null,
     rounds: rounds.map((r: any) => ({
       ...r,
       offer_raw: r.offer_raw,

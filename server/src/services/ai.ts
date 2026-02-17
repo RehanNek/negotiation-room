@@ -85,15 +85,32 @@ function getMockResponse(messages: OpenAI.Chat.ChatCompletionMessageParam[]): st
   const content = typeof lastMessage.content === 'string' ? lastMessage.content : '';
 
   if (content.includes('parse')) {
+    const offerMatch = content.match(/structured terms:\s*"([\s\S]+)"$/i);
+    const rawOffer = offerMatch ? offerMatch[1] : content;
+    const parsedAmount = parseLatestAmount(rawOffer);
+    const parsedTimeline = parseTimeline(rawOffer);
+    const parsedDeliverables = parseDeliverables(rawOffer);
+    const parsedService = parseService(rawOffer);
     return JSON.stringify({
-      terms: { price: 100, duration: '1 month', scope: 'standard' },
+      terms: {
+        ...(parsedAmount.amount !== undefined ? { price: parsedAmount.amount } : {}),
+        ...(parsedAmount.currency ? { currency: parsedAmount.currency } : {}),
+        ...(parsedTimeline ? { timeline: parsedTimeline } : {}),
+        ...(parsedService ? { service: parsedService } : {}),
+        ...(parsedDeliverables ? { deliverables: parsedDeliverables } : {}),
+        raw: rawOffer,
+      },
       confidence: 0.8,
     });
   }
   if (content.includes('suggest')) {
+    const latestLine = content
+      .split('\n')
+      .reverse()
+      .find((line) => line.trim().length > 0) || '';
     return JSON.stringify({
-      suggestion: 'Consider meeting in the middle on price while extending the duration.',
-      suggested_terms: { price: 150, duration: '2 months', scope: 'standard' },
+      suggestion: `Focus on clarifying deliverables, timeline, payment, and completion before your next message. Latest context: ${latestLine.slice(0, 120)}`,
+      suggested_terms: {},
     });
   }
   if (content.includes('convergence') || content.includes('analyze')) {
@@ -108,6 +125,19 @@ function getMockResponse(messages: OpenAI.Chat.ChatCompletionMessageParam[]): st
       verdict: 'TRUE',
       confidence: 0.85,
       reasoning: 'Based on the provided data, the condition appears to be met.',
+    });
+  }
+  if (content.includes('extract_contract_terms')) {
+    const amountMatch = content.match(/\$\s?(\d+(?:\.\d+)?)/);
+    const timelineMatch = content.match(/(\d+)\s*(day|days|week|weeks|month|months|hour|hours)/i);
+    return JSON.stringify({
+      agreed_terms: {
+        price_amount: amountMatch ? Number.parseFloat(amountMatch[1] as string) : null,
+        currency: amountMatch ? 'USD' : null,
+        timeline: timelineMatch ? `${timelineMatch[1]} ${timelineMatch[2]}` : null,
+      },
+      missing_terms: ['deliverables'],
+      confidence: 0.55,
     });
   }
   return JSON.stringify({ response: 'Mock AI response — grant auth not configured.' });
@@ -141,12 +171,12 @@ Respond ONLY with JSON: { "terms": { ... }, "confidence": number 0-1 }`,
 export async function generateSuggestion(
   category: string,
   params: Record<string, any>,
-  rounds: Array<{ party: string; offer_structured: Record<string, any> }>,
+  rounds: Array<{ party: string; offer_structured: Record<string, any>; offer_raw?: string }>,
   currentParty: string,
   constraints: Record<string, any>
 ): Promise<{ suggestion: string; suggested_terms: Record<string, any> }> {
   const roundsText = rounds
-    .map((r) => `Party ${r.party}: ${JSON.stringify(r.offer_structured)}`)
+    .map((r) => `Party ${r.party}\nMessage: ${normalizeText(r.offer_raw)}\nStructured terms: ${JSON.stringify(r.offer_structured)}`)
     .join('\n');
 
   const currentPartyLabel = currentParty === 'A'
@@ -168,6 +198,8 @@ Rules:
 1) Give tactical advice for ${currentPartyLabel} only.
 2) Never frame suggestions as "Party A should..." or "Party B should..." for the other side.
 3) Keep suggestions practical and concise.
+4) Focus on the most recent counterparty message and what this party should send next.
+5) Prefer asking for missing specifics (deliverables, timeline, payment, acceptance) over generic advice.
 
 Respond ONLY with JSON: { "suggestion": "advice text", "suggested_terms": { ... } }`,
     },
@@ -231,6 +263,401 @@ Respond ONLY with JSON: { "verdict": "TRUE" | "FALSE", "confidence": number 0-1,
     return JSON.parse(response);
   } catch {
     return { verdict: 'PENDING', confidence: 0, reasoning: 'Failed to evaluate condition.' };
+  }
+}
+
+function pickScalar(record: Record<string, any>, keys: string[]): unknown {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'string' && !value.trim()) continue;
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeText(input: unknown): string {
+  if (!input) return '';
+  if (typeof input === 'string') return input;
+  if (typeof input === 'number' || typeof input === 'boolean') return String(input);
+  try {
+    return JSON.stringify(input);
+  } catch {
+    return '';
+  }
+}
+
+function isMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function pickFirstMeaningful(...values: unknown[]): unknown {
+  for (const value of values) {
+    if (isMeaningfulValue(value)) return value;
+  }
+  return null;
+}
+
+function uniqueStrings(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) continue;
+    seen.add(normalized);
+  }
+  return Array.from(seen);
+}
+
+function mergeTerms(baseTerms: Record<string, any>, aiTerms: Record<string, any>): Record<string, any> {
+  const merged: Record<string, any> = { ...baseTerms };
+  for (const [key, value] of Object.entries(aiTerms)) {
+    if (!isMeaningfulValue(value)) continue;
+    if (isMeaningfulValue(baseTerms[key])) continue;
+    merged[key] = value;
+  }
+  return merged;
+}
+
+interface AmountCandidate {
+  amount: number;
+  currency: string;
+  position: number;
+}
+
+const AGREEMENT_HINT_REGEX = /\b(agree|agreed|deal|done|works|proceed|confirmed|confirm|accept|let'?s do|sounds good|approved)\b/i;
+
+function extractAmountCandidates(text: string): AmountCandidate[] {
+  const candidates: AmountCandidate[] = [];
+  const usdRegex = /\$\s?(\d[\d,]*(?:\.\d+)?)/g;
+  const tokenRegex = /(\d[\d,]*(?:\.\d+)?)\s*(usd|usdc|usdt|eth|eur|gbp)\b/gi;
+
+  let usdMatch: RegExpExecArray | null;
+  while ((usdMatch = usdRegex.exec(text)) !== null) {
+    const amount = Number.parseFloat((usdMatch[1] as string).replace(/,/g, ''));
+    if (!Number.isFinite(amount)) continue;
+    candidates.push({
+      amount,
+      currency: 'USD',
+      position: usdMatch.index,
+    });
+  }
+
+  let tokenMatch: RegExpExecArray | null;
+  while ((tokenMatch = tokenRegex.exec(text)) !== null) {
+    const amount = Number.parseFloat((tokenMatch[1] as string).replace(/,/g, ''));
+    if (!Number.isFinite(amount)) continue;
+    candidates.push({
+      amount,
+      currency: String(tokenMatch[2]).toUpperCase(),
+      position: tokenMatch.index,
+    });
+  }
+
+  return candidates;
+}
+
+function pickLatestCandidate(candidates: AmountCandidate[]): AmountCandidate | null {
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((left, right) => right.position - left.position)[0] || null;
+}
+
+function selectDominantAmount(
+  rounds: Array<{ party: string; offer_raw?: string; offer_structured: Record<string, any> }>
+): { amount?: number; currency?: string } {
+  if (rounds.length === 0) return {};
+
+  const roundSignals = rounds
+    .map((round, index) => {
+      const rawText = normalizeText(round.offer_raw);
+      const sourceText = rawText.trim() ? rawText : normalizeText(round.offer_structured);
+      const normalized = sourceText.trim();
+      if (!normalized) return null;
+
+      const candidates = extractAmountCandidates(normalized);
+      if (candidates.length === 0) return null;
+
+      return {
+        index,
+        sourceText: normalized,
+        agreementHint: AGREEMENT_HINT_REGEX.test(normalized),
+        candidates,
+      };
+    })
+    .filter((item): item is { index: number; sourceText: string; agreementHint: boolean; candidates: AmountCandidate[] } => Boolean(item));
+
+  if (roundSignals.length === 0) return {};
+
+  const agreementSignals = roundSignals.filter((signal) => signal.agreementHint);
+  if (agreementSignals.length > 0) {
+    const latestAgreementRound = agreementSignals.sort((left, right) => right.index - left.index)[0];
+    const latestAgreementCandidate = pickLatestCandidate(latestAgreementRound.candidates);
+    if (latestAgreementCandidate) {
+      return { amount: latestAgreementCandidate.amount, currency: latestAgreementCandidate.currency };
+    }
+  }
+
+  const latestRoundWithAmount = roundSignals.sort((left, right) => right.index - left.index)[0];
+  const latestCandidate = pickLatestCandidate(latestRoundWithAmount.candidates);
+  if (!latestCandidate) return {};
+  return { amount: latestCandidate.amount, currency: latestCandidate.currency };
+}
+
+function parseLatestAmount(text: string): { amount?: number; currency?: string } {
+  const candidates = extractAmountCandidates(text);
+  const latest = pickLatestCandidate(candidates);
+  if (!latest) return {};
+  return { amount: latest.amount, currency: latest.currency };
+}
+
+function parseTimeline(text: string): string | null {
+  const match = text.match(/(\d+)\s*(business\s+)?(day|days|week|weeks|month|months|hour|hours)\b/i);
+  if (!match) return null;
+  const count = match[1];
+  const unit = match[3];
+  return `${count} ${unit}`;
+}
+
+function parseDeadline(text: string): string | null {
+  const explicit = text.match(/\b(?:by|before|on)\s+([A-Z][a-z]{2,9}\s+\d{1,2}(?:,\s*\d{4})?|\d{4}-\d{2}-\d{2}|friday|monday|tuesday|wednesday|thursday|saturday|sunday)\b/i);
+  if (explicit) return explicit[1] as string;
+  return null;
+}
+
+function parseSchedule(text: string): string | null {
+  const weekPattern = text.match(/\b(mon(?:day)?s?|tue(?:sday)?s?|wed(?:nesday)?s?|thu(?:rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)(?:\s*(?:,|and)?\s*(mon(?:day)?s?|tue(?:sday)?s?|wed(?:nesday)?s?|thu(?:rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?))*.*?\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b(?:\s*[A-Z]{2,4})?/i);
+  if (weekPattern) return weekPattern[0] as string;
+
+  const windowPattern = text.match(/\b(?:between|from)\s+\d{1,2}(?::\d{2})?\s?(?:am|pm)\s+(?:and|to)\s+\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/i);
+  if (windowPattern) return windowPattern[0] as string;
+
+  return null;
+}
+
+function parseDeliverables(text: string): string | null {
+  const explicit = text.match(/\b(?:deliverables?|scope|output|work)\s*[:\-]\s*([^\n.;]+)/i);
+  if (explicit?.[1]) return explicit[1].trim();
+
+  const intent = text.match(/\b(?:build|create|produce|deliver|label|write|design)\s+([^\n.!?]{8,100})/i);
+  if (intent?.[1]) return intent[1].trim();
+
+  return null;
+}
+
+function parsePaymentTerms(text: string): string | null {
+  const explicit = text.match(/\b(?:payment(?:\s+terms?)?|escrow|milestones?)\s*[:\-]\s*([^\n.;]+)/i);
+  if (explicit?.[1]) return explicit[1].trim();
+
+  const cue = text.match(/\b(?:upfront|escrow|after delivery|net\s*\d+|split payment|milestone)\b/i);
+  if (cue) return cue[0] as string;
+
+  return null;
+}
+
+function parseAcceptance(text: string): string | null {
+  const explicit = text.match(/\b(?:acceptance(?:\s+criteria)?|verification|approval)\s*[:\-]\s*([^\n.;]+)/i);
+  if (explicit?.[1]) return explicit[1].trim();
+
+  const cue = text.match(/\b(?:affirm|approve|done once|accepted when|release on)\b[^\n.!?]{0,120}/i);
+  if (cue) return cue[0].trim();
+
+  return null;
+}
+
+function parseService(text: string): string | null {
+  const explicit = text.match(/\b(?:service|task|project|category)\s*[:\-]\s*([^\n.;]+)/i);
+  if (explicit?.[1]) return explicit[1].trim();
+  return null;
+}
+
+function computeMissingTerms(agreedTerms: Record<string, any>, dealType: string): string[] {
+  const missing: string[] = [];
+  if (!isMeaningfulValue(agreedTerms.deliverables)) missing.push('deliverables');
+  if (!isMeaningfulValue(agreedTerms.price_amount)) missing.push('price');
+  if (
+    !isMeaningfulValue(agreedTerms.timeline) &&
+    !isMeaningfulValue(agreedTerms.deadline) &&
+    !isMeaningfulValue(agreedTerms.schedule)
+  ) {
+    missing.push('timeline_or_schedule');
+  }
+
+  if (dealType === 'conditional') {
+    if (!isMeaningfulValue(agreedTerms.acceptance_criteria)) {
+      missing.push('condition_or_resolution_rule');
+    }
+  }
+
+  return missing;
+}
+
+function confidenceFromMissingCount(missingCount: number): number {
+  if (missingCount === 0) return 0.9;
+  if (missingCount === 1) return 0.78;
+  if (missingCount === 2) return 0.64;
+  return 0.5;
+}
+
+function buildHeuristicExtraction(rounds: Array<{ party: string; offer_raw?: string; offer_structured: Record<string, any> }>, dealType: string): {
+  agreed_terms: Record<string, any>;
+  missing_terms: string[];
+  confidence: number;
+} {
+  const lastA = [...rounds].reverse().find((round) => round.party === 'A');
+  const lastB = [...rounds].reverse().find((round) => round.party === 'B');
+  const partyA = (lastA?.offer_structured || {}) as Record<string, any>;
+  const partyB = (lastB?.offer_structured || {}) as Record<string, any>;
+
+  const rawCorpus = rounds
+    .map((round) => normalizeText(round.offer_raw))
+    .filter((value) => value.trim())
+    .join('\n');
+  const structuredCorpus = rounds
+    .map((round) => normalizeText(round.offer_structured))
+    .filter((value) => value.trim())
+    .join('\n');
+  const combinedCorpus = `${rawCorpus}\n${structuredCorpus}`;
+
+  const dominantAmount = selectDominantAmount(rounds);
+  const fallbackAmount = dominantAmount.amount !== undefined
+    ? dominantAmount
+    : parseLatestAmount(rawCorpus || combinedCorpus);
+  const fallbackTimeline = parseTimeline(rawCorpus) || parseTimeline(structuredCorpus) || parseTimeline(combinedCorpus);
+  const fallbackDeadline = parseDeadline(rawCorpus) || parseDeadline(structuredCorpus) || parseDeadline(combinedCorpus);
+  const fallbackSchedule = parseSchedule(rawCorpus) || parseSchedule(structuredCorpus) || parseSchedule(combinedCorpus);
+  const fallbackDeliverables = parseDeliverables(rawCorpus) || parseDeliverables(structuredCorpus) || parseDeliverables(combinedCorpus);
+  const fallbackPaymentTerms = parsePaymentTerms(rawCorpus) || parsePaymentTerms(structuredCorpus) || parsePaymentTerms(combinedCorpus);
+  const fallbackAcceptance = parseAcceptance(rawCorpus) || parseAcceptance(structuredCorpus) || parseAcceptance(combinedCorpus);
+  const fallbackService = parseService(rawCorpus) || parseService(structuredCorpus) || parseService(combinedCorpus);
+
+  const agreedTerms: Record<string, any> = {
+    service: pickFirstMeaningful(
+      fallbackService,
+      pickScalar(partyA, ['service', 'category', 'task', 'scope']),
+      pickScalar(partyB, ['service', 'category', 'task', 'scope'])
+    ),
+    deliverables: pickFirstMeaningful(
+      fallbackDeliverables,
+      pickScalar(partyA, ['deliverables', 'output', 'scope', 'details']),
+      pickScalar(partyB, ['deliverables', 'output', 'scope', 'details'])
+    ),
+    price_amount: pickFirstMeaningful(
+      fallbackAmount.amount,
+      pickScalar(partyA, ['price_amount', 'amount', 'price', 'fee', 'budget']),
+      pickScalar(partyB, ['price_amount', 'amount', 'price', 'fee', 'budget'])
+    ),
+    currency: pickFirstMeaningful(
+      fallbackAmount.currency,
+      pickScalar(partyA, ['currency', 'token']),
+      pickScalar(partyB, ['currency', 'token'])
+    ),
+    timeline: pickFirstMeaningful(
+      fallbackTimeline,
+      pickScalar(partyA, ['timeline', 'duration', 'turnaround']),
+      pickScalar(partyB, ['timeline', 'duration', 'turnaround'])
+    ),
+    deadline: pickFirstMeaningful(
+      fallbackDeadline,
+      pickScalar(partyA, ['deadline', 'due_date', 'delivery_date']),
+      pickScalar(partyB, ['deadline', 'due_date', 'delivery_date'])
+    ),
+    schedule: pickFirstMeaningful(
+      fallbackSchedule,
+      pickScalar(partyA, ['schedule', 'availability', 'time_window', 'timezone']),
+      pickScalar(partyB, ['schedule', 'availability', 'time_window', 'timezone'])
+    ),
+    payment_terms: pickFirstMeaningful(
+      fallbackPaymentTerms,
+      pickScalar(partyA, ['payment_terms', 'escrow', 'payment_schedule']),
+      pickScalar(partyB, ['payment_terms', 'escrow', 'payment_schedule'])
+    ),
+    acceptance_criteria: pickFirstMeaningful(
+      fallbackAcceptance,
+      pickScalar(partyA, ['acceptance', 'acceptance_criteria', 'verification']),
+      pickScalar(partyB, ['acceptance', 'acceptance_criteria', 'verification'])
+    ),
+  };
+
+  const missing = computeMissingTerms(agreedTerms, dealType);
+  const confidence = confidenceFromMissingCount(missing.length);
+  return {
+    agreed_terms: agreedTerms,
+    missing_terms: missing,
+    confidence,
+  };
+}
+
+export async function extractNegotiatedTerms(
+  rounds: Array<{ party: string; offer_raw?: string; offer_structured: Record<string, any> }>,
+  dealType: string,
+  category: string
+): Promise<{ agreed_terms: Record<string, any>; missing_terms: string[]; confidence: number }> {
+  const heuristic = buildHeuristicExtraction(rounds, dealType);
+  const roundsText = rounds
+    .map((round) => `Party ${round.party}\nRaw: ${normalizeText(round.offer_raw)}\nStructured: ${normalizeText(round.offer_structured)}`)
+    .join('\n---\n');
+
+  const response = await chatCompletion([
+    {
+      role: 'system',
+      content: `extract_contract_terms
+You convert a negotiation chat into structured agreement terms.
+Return ONLY JSON:
+{
+  "agreed_terms": {
+    "service": string|null,
+    "deliverables": string|null,
+    "price_amount": number|null,
+    "currency": string|null,
+    "timeline": string|null,
+    "deadline": string|null,
+    "schedule": string|null,
+    "payment_terms": string|null,
+    "acceptance_criteria": string|null
+  },
+  "missing_terms": string[],
+  "confidence": number
+}`,
+    },
+    {
+      role: 'user',
+      content: `Deal type: ${dealType}
+Category: ${category}
+Negotiation transcript:
+${roundsText}`,
+    },
+  ]);
+
+  try {
+    const parsed = JSON.parse(response) as {
+      agreed_terms?: Record<string, any>;
+      missing_terms?: unknown;
+      confidence?: unknown;
+    };
+    const aiTerms = parsed.agreed_terms && typeof parsed.agreed_terms === 'object'
+      ? parsed.agreed_terms
+      : {};
+    const merged = mergeTerms(heuristic.agreed_terms, aiTerms);
+    const aiMissingTerms = Array.isArray(parsed.missing_terms)
+      ? parsed.missing_terms.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : [];
+    const computedMissing = computeMissingTerms(merged, dealType);
+    const missingTerms = uniqueStrings([...aiMissingTerms, ...computedMissing]);
+    const confidence =
+      typeof parsed.confidence === 'number' && Number.isFinite(parsed.confidence)
+        ? Math.max(0, Math.min(1, parsed.confidence))
+        : confidenceFromMissingCount(missingTerms.length);
+
+    return {
+      agreed_terms: merged,
+      missing_terms: missingTerms,
+      confidence,
+    };
+  } catch {
+    return heuristic;
   }
 }
 

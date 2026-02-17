@@ -1,4 +1,4 @@
-import { contractStatusCopy, negotiationStatusCopy, verdictStatusCopy } from '@/lib/status';
+import { contractStatusCopy, inferAttestationVerdict, negotiationStatusCopy, verdictStatusCopy } from '@/lib/status';
 import { describe, expect, it } from 'vitest';
 
 describe('status copy', () => {
@@ -17,32 +17,53 @@ describe('status copy', () => {
 
   it('maps contract status to expected copy', () => {
     expect(contractStatusCopy('pending_resolution')).toEqual({
-      label: 'Needs Resolution',
+      label: 'Action Needed',
       tone: 'warning',
-      description: 'Resolve condition and generate attested verdict.',
+      description: 'Run the rule check to decide the outcome.',
     });
     expect(contractStatusCopy('resolved')).toEqual({
-      label: 'Resolved',
+      label: 'Completed',
       tone: 'success',
-      description: 'Final verdict and attestation are available.',
+      description: 'Final outcome is recorded with proof.',
     });
   });
 
   it('maps condition verdict values and fallback', () => {
     expect(verdictStatusCopy('TRUE')).toEqual({
-      label: 'Condition TRUE',
+      label: 'Rule Passed',
       tone: 'success',
-      description: 'Condition evaluated as true from attested inputs.',
+      description: 'The contract rule evaluated to true.',
     });
     expect(verdictStatusCopy('FALSE')).toEqual({
-      label: 'Condition FALSE',
+      label: 'Rule Failed',
       tone: 'danger',
-      description: 'Condition evaluated as false from attested inputs.',
+      description: 'The contract rule evaluated to false.',
     });
     expect(verdictStatusCopy(undefined)).toEqual({
-      label: 'Pending Verdict',
+      label: 'Pending',
       tone: 'warning',
-      description: 'Condition has not been finalized yet.',
+      description: 'Outcome has not been finalized yet.',
     });
+  });
+
+  it('infers service affirmation verdict when payload verdict is missing', () => {
+    expect(
+      inferAttestationVerdict({
+        type: 'service_affirmation',
+        payload: { action: 'service_delivery_affirmed' },
+      })
+    ).toBe('TRUE');
+    expect(
+      inferAttestationVerdict({
+        type: 'condition_resolution',
+        payload: { verdict: 'FALSE' },
+      })
+    ).toBe('FALSE');
+    expect(
+      inferAttestationVerdict({
+        type: 'deal_recorded',
+        payload: {},
+      })
+    ).toBeUndefined();
   });
 });

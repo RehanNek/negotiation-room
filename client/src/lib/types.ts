@@ -2,6 +2,7 @@ export type DealType = 'service' | 'conditional';
 export type NegotiationStatus = 'waiting' | 'active' | 'deal' | 'impasse' | 'no_deal';
 export type ContractStatus = 'active' | 'pending_resolution' | 'resolved';
 export type ConditionVerdict = 'TRUE' | 'FALSE' | 'PENDING';
+export type EscrowStatus = 'awaiting_funding' | 'funded' | 'released' | 'refunded' | 'failed';
 export type SessionMode = 'signature' | 'demo';
 
 export interface AuthChallenge {
@@ -48,6 +49,12 @@ export interface NegotiationViewModel {
   current_round: number;
   party_a_wallet: string;
   party_b_wallet: string | null;
+  final_terms_draft?: Record<string, unknown> | null;
+  final_terms_hash?: string | null;
+  party_a_confirmed_terms_hash?: string | null;
+  party_b_confirmed_terms_hash?: string | null;
+  party_a_done_at?: string | null;
+  party_b_done_at?: string | null;
   rounds: RoundViewModel[];
   requester_party?: 'A' | 'B' | null;
   private_constraints?: Record<string, unknown>;
@@ -83,9 +90,36 @@ export interface ContractViewModel {
   verdict?: ConditionVerdict | null;
   verdict_reasoning?: string | null;
   attestation_id?: string | null;
+  terms_hash?: string | null;
+  confirmed_by_a_at?: string | null;
+  confirmed_by_b_at?: string | null;
+  escrow?: EscrowViewModel;
   created_at: string;
   resolved_at?: string | null;
   conditions?: ConditionViewModel[];
+}
+
+export interface EscrowViewModel {
+  id: string;
+  contract_id: string;
+  deal_hash: string;
+  status: EscrowStatus;
+  chain_id: number;
+  asset: 'ETH';
+  amount_wei: string;
+  payer_wallet: string;
+  recipient_if_true_wallet: string;
+  recipient_if_false_wallet: string;
+  timeout_at: string;
+  contract_address: string;
+  fund_tx_hash: string | null;
+  fund_block_number: number | null;
+  settle_tx_hash: string | null;
+  refund_tx_hash: string | null;
+  attestation_id: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AttestationRecord {
@@ -133,10 +167,20 @@ export interface SubmitOfferResponse {
   contract?: ContractViewModel;
 }
 
-export interface CompleteNegotiationResponse {
+export interface CompleteNegotiationDealResponse {
   status: 'deal';
   contract: ContractViewModel;
 }
+
+export interface CompleteNegotiationPendingResponse {
+  status: 'awaiting_other_party_confirmation';
+  negotiation_id: string;
+  terms_hash: string;
+  terms_draft: Record<string, unknown>;
+  confirmed_by_party: 'A' | 'B';
+}
+
+export type CompleteNegotiationResponse = CompleteNegotiationPendingResponse | CompleteNegotiationDealResponse;
 
 export interface ResolveConditionResponse {
   contract_id: string;
@@ -179,5 +223,21 @@ export interface SubmitOfferPayload {
 
 export interface CompleteNegotiationPayload {
   negotiation_id: string;
+  terms_hash?: string;
+  escrow_amount_eth: string;
   wallet_address?: string;
+}
+
+export interface EscrowPrepareResponse {
+  escrow: EscrowViewModel;
+  fund_tx: {
+    to: string;
+    value_wei: string;
+    data: string;
+  };
+}
+
+export interface EscrowFundedResponse {
+  escrow: EscrowViewModel;
+  attestation: AttestationRecord;
 }

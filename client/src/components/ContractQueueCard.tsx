@@ -3,9 +3,16 @@
 import Link from 'next/link';
 import OfferTermsView from '@/components/OfferTermsView';
 import StatusPill from '@/components/StatusPill';
-import { buildReadableContractSummary, formatTimestamp, formatWallet } from '@/lib/formatters';
+import {
+  buildReadableContractSummary,
+  extractMissingTerms,
+  formatMissingTermLabel,
+  formatTimestamp,
+  formatWeiToEth,
+  formatWallet,
+} from '@/lib/formatters';
 import { contractStatusCopy, verdictStatusCopy } from '@/lib/status';
-import type { ContractViewModel } from '@/lib/types';
+import type { ContractViewModel, EscrowStatus } from '@/lib/types';
 
 interface ContractQueueCardProps {
   contract: ContractViewModel;
@@ -13,8 +20,83 @@ interface ContractQueueCardProps {
   walletAddress?: string | null;
   onResolve?: (id: string) => void;
   onAffirmService?: (id: string) => void;
+  onFundEscrow?: (id: string) => void;
   resolving?: boolean;
   affirming?: boolean;
+  fundingEscrow?: boolean;
+}
+
+const EXPLORER_TX_BASE = process.env.NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL || 'https://sepolia.etherscan.io/tx/';
+
+function escrowStatusCopy(status?: EscrowStatus): string {
+  switch (status) {
+    case 'awaiting_funding':
+      return 'Awaiting payer funding onchain.';
+    case 'funded':
+      return 'Escrow funded onchain and waiting for verdict-triggered settlement.';
+    case 'released':
+      return 'Escrow released to the service provider / true recipient.';
+    case 'refunded':
+      return 'Escrow refunded (false verdict or timeout).';
+    case 'failed':
+      return 'Escrow action failed. Retry funding or settlement.';
+    default:
+      return 'Escrow not prepared yet.';
+  }
+}
+
+function isDigits(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+$/.test(value.trim());
+}
+
+function formatEthAmountText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  if (!/^\d+(?:\.\d{1,18})?$/.test(text)) return null;
+  return `${text} ETH`;
+}
+
+function deriveLockedEscrowAmount(
+  termsRecord: Record<string, unknown>,
+  agreedTerms: Record<string, unknown>,
+  escrowAmountWei?: string | null
+): string {
+  if (escrowAmountWei) {
+    return formatWeiToEth(escrowAmountWei);
+  }
+
+  const weiCandidates = [
+    agreedTerms.amount_wei,
+    agreedTerms.escrow_amount_wei,
+    termsRecord.amount_wei,
+    termsRecord.escrow_amount_wei,
+  ];
+  for (const candidate of weiCandidates) {
+    if (isDigits(candidate)) {
+      return formatWeiToEth(candidate);
+    }
+  }
+
+  const ethCandidates = [
+    agreedTerms.escrow_eth,
+    agreedTerms.amount_eth,
+    termsRecord.escrow_eth,
+    termsRecord.amount_eth,
+  ];
+  for (const candidate of ethCandidates) {
+    const formatted = formatEthAmountText(candidate);
+    if (formatted) return formatted;
+  }
+
+  const currency = String(agreedTerms.currency || termsRecord.currency || '').trim().toUpperCase();
+  if (currency === 'ETH') {
+    const numeric = agreedTerms.price_amount ?? agreedTerms.amount ?? termsRecord.amount ?? termsRecord.price;
+    const formatted = formatEthAmountText(numeric);
+    if (formatted) return formatted;
+  }
+
+  return 'Not locked yet';
 }
 
 export default function ContractQueueCard({
@@ -23,16 +105,54 @@ export default function ContractQueueCard({
   walletAddress,
   onResolve,
   onAffirmService,
+  onFundEscrow,
   resolving = false,
   affirming = false,
+  fundingEscrow = false,
 }: ContractQueueCardProps) {
+  const termsRecord = (contract.terms && typeof contract.terms === 'object' && !Array.isArray(contract.terms))
+    ? (contract.terms as Record<string, unknown>)
+    : {};
+  const agreedTerms = (termsRecord.agreed_terms && typeof termsRecord.agreed_terms === 'object' && !Array.isArray(termsRecord.agreed_terms))
+    ? (termsRecord.agreed_terms as Record<string, unknown>)
+    : {};
   const status = contractStatusCopy(contract.status);
   const verdict = verdictStatusCopy(contract.verdict);
   const normalizedWallet = walletAddress?.toLowerCase();
   const isService = contract.deal_type === 'service';
-  const receiverWallet = contract.party_a_wallet;
-  const providerWallet = contract.party_b_wallet;
+  const explicitReceiver = [
+    agreedTerms.receiver_wallet,
+    agreedTerms.client_wallet,
+    agreedTerms.buyer_wallet,
+    agreedTerms.requester_wallet,
+    termsRecord.receiver_wallet,
+    termsRecord.client_wallet,
+    termsRecord.buyer_wallet,
+    termsRecord.requester_wallet,
+  ].find((value) => typeof value === 'string' && value.trim()) as string | undefined;
+  const receiverWallet = explicitReceiver || contract.party_a_wallet;
+  const providerWallet =
+    receiverWallet.toLowerCase() === contract.party_a_wallet.toLowerCase()
+      ? contract.party_b_wallet
+      : contract.party_a_wallet;
+  const missingTerms = extractMissingTerms(contract.terms);
   const readableSummary = buildReadableContractSummary(contract.deal_type, contract.summary, contract.terms);
+  const escrow = contract.escrow;
+  const lockedEscrowAmount = deriveLockedEscrowAmount(termsRecord, agreedTerms, escrow?.amount_wei);
+  const verifyAttestationId = escrow?.attestation_id || contract.attestation_id || null;
+  const payerWallet = (
+    [agreedTerms.payer_wallet, agreedTerms.client_wallet, agreedTerms.buyer_wallet, agreedTerms.requester_wallet, termsRecord.payer_wallet, contract.party_a_wallet]
+      .find((value) => typeof value === 'string' && value.trim()) as string | undefined
+  ) || contract.party_a_wallet;
+  const payerCanFundEscrow = Boolean(
+    onFundEscrow &&
+      normalizedWallet &&
+      payerWallet &&
+      normalizedWallet === payerWallet.toLowerCase() &&
+      (!escrow || escrow.status === 'awaiting_funding' || escrow.status === 'failed')
+  );
+  const escrowFundingCta = !escrow ? 'Prepare & Fund Escrow' : escrow.status === 'failed' ? 'Retry Escrow Funding' : 'Fund Escrow';
+  const settlementTxHash = escrow?.settle_tx_hash || escrow?.refund_tx_hash;
   const canAffirmService = Boolean(
     isService &&
       contract.status === 'active' &&
@@ -73,16 +193,67 @@ export default function ContractQueueCard({
 
       <div className="mb-4 grid gap-2 rounded-2xl border border-[var(--line)] bg-white/70 p-3 text-xs text-[var(--muted-ink)] md:grid-cols-2">
         <p>
-          {isService ? 'Receiver' : 'Party A'}:{' '}
+          {isService ? 'Receives Service' : 'Party A'}:{' '}
           <span className="font-mono text-[var(--ink)]">{formatWallet(receiverWallet)}</span>
         </p>
         <p>
-          {isService ? 'Provider' : 'Party B'}:{' '}
+          {isService ? 'Provides Service' : 'Party B'}:{' '}
           <span className="font-mono text-[var(--ink)]">{formatWallet(providerWallet)}</span>
         </p>
       </div>
 
-      <OfferTermsView terms={contract.terms} title="Contract Terms" />
+      <OfferTermsView terms={contract.terms} title="What Both Sides Agreed" />
+
+      <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Escrow Status</p>
+        <p className="mt-1 text-sm text-[var(--ink)]">{escrowStatusCopy(escrow?.status)}</p>
+        <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+            Payer: <span className="font-mono text-[var(--ink)]">{formatWallet(payerWallet)}</span>
+          </p>
+          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+            Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>
+          </p>
+          {escrow?.fund_tx_hash ? (
+            <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 md:col-span-2">
+              Funding tx:{' '}
+              <a
+                href={`${EXPLORER_TX_BASE}${escrow.fund_tx_hash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[var(--ink)] underline decoration-dotted underline-offset-2"
+              >
+                {formatWallet(escrow.fund_tx_hash, 10, 8)}
+              </a>
+            </p>
+          ) : null}
+          {settlementTxHash ? (
+            <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 md:col-span-2">
+              Settlement tx:{' '}
+              <a
+                href={`${EXPLORER_TX_BASE}${settlementTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[var(--ink)] underline decoration-dotted underline-offset-2"
+              >
+                {formatWallet(settlementTxHash, 10, 8)}
+              </a>
+            </p>
+          ) : null}
+        </div>
+        {escrow?.last_error ? (
+          <p className="mt-2 text-xs text-[var(--danger)]">Latest escrow error: {escrow.last_error}</p>
+        ) : null}
+      </div>
+
+      {missingTerms.length > 0 ? (
+        <div className="mt-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--warning),#ffffff_45%)] bg-[color:color-mix(in_srgb,var(--warning),#ffffff_92%)] p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Missing Or Unclear Terms</p>
+          <p className="mt-1 text-sm text-[var(--ink)]">
+            {missingTerms.map((term) => formatMissingTermLabel(term)).join(', ')}
+          </p>
+        </div>
+      ) : null}
 
       {(contract.verdict || contract.status === 'resolved') && (
         <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
@@ -96,9 +267,20 @@ export default function ContractQueueCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {payerCanFundEscrow ? (
+          <button
+            onClick={() => onFundEscrow?.(contract.id)}
+            disabled={fundingEscrow}
+            className="button-primary text-sm"
+            type="button"
+          >
+            {fundingEscrow ? 'Funding Escrow...' : escrowFundingCta}
+          </button>
+        ) : null}
+
         {contract.status === 'pending_resolution' && onResolve ? (
           <button onClick={() => onResolve(contract.id)} disabled={resolving} className="button-primary text-sm" type="button">
-            {resolving ? 'Resolving...' : 'Resolve Condition'}
+            {resolving ? 'Running check...' : 'Run Condition Check'}
           </button>
         ) : null}
 
@@ -109,20 +291,20 @@ export default function ContractQueueCard({
             className="button-primary text-sm"
             type="button"
           >
-            {affirming ? 'Releasing...' : 'Affirm Delivery & Release Escrow'}
+            {affirming ? 'Confirming...' : 'Confirm Work Received & Release Escrow'}
           </button>
         ) : null}
 
-        {contract.attestation_id ? (
-          <Link href={`/verify?id=${contract.attestation_id}`} className="button-secondary text-sm">
-            View Attestation
+        {verifyAttestationId ? (
+          <Link href={`/verify?id=${verifyAttestationId}`} className="button-secondary text-sm">
+            Verify Proof
           </Link>
         ) : null}
       </div>
 
       {waitingForReceiver ? (
         <p className="mt-2 text-xs text-[var(--muted-ink)]">
-          Awaiting receiver confirmation before escrow release and attestation.
+          Waiting for the receiver to confirm completion before escrow release.
         </p>
       ) : null}
     </article>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { stringifyRaw, summarizeOfferTerms } from '@/lib/formatters';
+import { selectDisplayTerms, stringifyRaw, summarizeOfferTerms } from '@/lib/formatters';
 
 interface OfferTermsViewProps {
   terms: unknown;
@@ -23,9 +23,10 @@ function normalizeTerms(input: unknown): unknown {
 export default function OfferTermsView({ terms, title = 'Terms', compact = false }: OfferTermsViewProps) {
   const [showRaw, setShowRaw] = useState(false);
   const normalized = useMemo(() => normalizeTerms(terms), [terms]);
-  const summaries = useMemo(() => summarizeOfferTerms(normalized), [normalized]);
-  const isObjectPayload = Boolean(normalized && typeof normalized === 'object' && !Array.isArray(normalized));
-  const hasObjectEntries = isObjectPayload && Object.keys(normalized as Record<string, unknown>).length > 0;
+  const displayTerms = useMemo(() => selectDisplayTerms(normalized), [normalized]);
+  const summaries = useMemo(() => summarizeOfferTerms(displayTerms), [displayTerms]);
+  const isObjectPayload = Boolean(displayTerms && typeof displayTerms === 'object' && !Array.isArray(displayTerms));
+  const hasObjectEntries = isObjectPayload && Object.keys(displayTerms as Record<string, unknown>).length > 0;
 
   return (
     <div className={`rounded-2xl border border-[var(--line)] bg-white/65 ${compact ? 'p-3' : 'p-4'}`}>
@@ -63,7 +64,7 @@ export default function OfferTermsView({ terms, title = 'Terms', compact = false
         </pre>
       ) : (
         <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
-          {typeof normalized === 'string' && normalized.trim() ? normalized : 'No structured terms provided yet.'}
+          {typeof displayTerms === 'string' && displayTerms.trim() ? displayTerms : 'No structured terms provided yet.'}
         </p>
       )}
     </div>

@@ -39,4 +39,26 @@ describe('OfferTermsView', () => {
     rerender(<OfferTermsView terms="simple text payload" />);
     expect(screen.getByText('simple text payload')).toBeInTheDocument();
   });
+
+  it('shows agreed terms view first when full contract payload is provided', () => {
+    render(
+      <OfferTermsView
+        terms={{
+          agreed_terms: {
+            deliverables: '3 recorded lessons',
+            price_amount: 220,
+            currency: 'USD',
+          },
+          party_a_offer: { raw: 'initial proposal' },
+          party_b_offer: { raw: 'counter proposal' },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Deliverables')).toBeInTheDocument();
+    expect(screen.getByText('3 recorded lessons')).toBeInTheDocument();
+    expect(screen.getByText('Price')).toBeInTheDocument();
+    expect(screen.getByText('220 USD')).toBeInTheDocument();
+    expect(screen.queryByText('Requester Terms')).not.toBeInTheDocument();
+  });
 });
