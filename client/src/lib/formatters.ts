@@ -178,7 +178,7 @@ export function formatRelativeStatusHint(status: NegotiationStatus | ContractSta
     waiting: 'Awaiting the second party to join.',
     active: 'Live and accepting actions.',
     deal: 'Deal reached. Contract should now exist.',
-    impasse: 'Max rounds reached without convergence.',
+    impasse: 'Negotiation closed without agreement.',
     no_deal: 'A participant exited the negotiation.',
     pending_resolution: 'Ready for condition resolution.',
     resolved: 'Final verdict and attestation available.',

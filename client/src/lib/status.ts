@@ -13,11 +13,11 @@ export function negotiationStatusCopy(status: NegotiationStatus): StatusCopy {
     case 'waiting':
       return { label: 'Waiting', tone: 'warning', description: 'Share the room code so the other party can join.' };
     case 'active':
-      return { label: 'Live', tone: 'success', description: 'Submit your next offer to advance the round.' };
+      return { label: 'Live', tone: 'success', description: 'Send messages, press Done when terms are agreed, or walk away.' };
     case 'deal':
-      return { label: 'Deal Reached', tone: 'success', description: 'Terms converged. Contract generation complete.' };
+      return { label: 'Deal Reached', tone: 'success', description: 'Done confirmed. Contract generation complete.' };
     case 'impasse':
-      return { label: 'Impasse', tone: 'danger', description: 'No convergence before max rounds.' };
+      return { label: 'Impasse', tone: 'danger', description: 'Negotiation closed without agreement.' };
     case 'no_deal':
       return { label: 'No Deal', tone: 'danger', description: 'A participant exited the negotiation.' };
     default:

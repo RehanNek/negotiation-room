@@ -207,7 +207,7 @@ describe('Negotiation API', () => {
     expect(outsiderStatus.body.error).toContain('not a participant');
   });
 
-  it('rejects duplicate offers from the same party in one round', async () => {
+  it('allows sequential messages from the same party without round lock', async () => {
     const tokenA = await authTokenFor(walletA);
     const tokenB = await authTokenFor(walletB);
 
@@ -238,7 +238,7 @@ describe('Negotiation API', () => {
       });
     expect(first.status).toBe(200);
 
-    const duplicate = await request(app)
+    const secondMessage = await request(app)
       .post('/negotiate/offer')
       .set(authHeader(tokenA))
       .send({
@@ -247,8 +247,9 @@ describe('Negotiation API', () => {
         offer: { price: 310, timeline: '2 weeks' },
       });
 
-    expect(duplicate.status).toBe(409);
-    expect(duplicate.body.error).toContain('already submitted');
+    expect(secondMessage.status).toBe(200);
+    expect(secondMessage.body.negotiation_status).toBe('active');
+    expect(secondMessage.body.round?.round_number).toBe(2);
   });
 
   it('blocks contract list access for a different wallet', async () => {
@@ -262,7 +263,7 @@ describe('Negotiation API', () => {
     expect(response.body.error).toContain('own wallet contracts');
   });
 
-  it('creates a contract when a deal converges', async () => {
+  it('creates a contract when a participant marks the negotiation done', async () => {
     const tokenA = await authTokenFor(walletA);
     const tokenB = await authTokenFor(walletB);
 
@@ -292,7 +293,7 @@ describe('Negotiation API', () => {
         offer: { price: 400, timeline: '2 weeks' },
       });
 
-    const second = await request(app)
+    await request(app)
       .post('/negotiate/offer')
       .set(authHeader(tokenB))
       .send({
@@ -301,12 +302,19 @@ describe('Negotiation API', () => {
         offer: { price: 390, timeline: '2 weeks' },
       });
 
-    expect(second.status).toBe(200);
-    expect(second.body.negotiation_status).toBe('deal');
-    expect(second.body.contract?.id).toBeTruthy();
-    expect(second.body.contract?.attestation_id).toBeTruthy();
-    expect(second.body.contract?.terms?.party_a_offer?.price).toBe(400);
-    expect(second.body.contract?.terms?.party_b_offer?.price).toBe(390);
+    const done = await request(app)
+      .post('/negotiate/done')
+      .set(authHeader(tokenA))
+      .send({
+        negotiation_id: create.body.room_id,
+      });
+
+    expect(done.status).toBe(200);
+    expect(done.body.status).toBe('deal');
+    expect(done.body.contract?.id).toBeTruthy();
+    expect(done.body.contract?.attestation_id).toBeTruthy();
+    expect(done.body.contract?.terms?.party_a_offer?.price).toBe(400);
+    expect(done.body.contract?.terms?.party_b_offer?.price).toBe(390);
   });
 
   it('allows the service receiver to affirm delivery and generate attestation', async () => {
@@ -339,7 +347,7 @@ describe('Negotiation API', () => {
         offer: { price: 500, timeline: '3 days' },
       });
 
-    const second = await request(app)
+    await request(app)
       .post('/negotiate/offer')
       .set(authHeader(tokenB))
       .send({
@@ -347,8 +355,14 @@ describe('Negotiation API', () => {
         structured: true,
         offer: { price: 495, timeline: '3 days' },
       });
-    const contractId = second.body.contract?.id as string;
-    const initialAttestationId = second.body.contract?.attestation_id as string;
+    const done = await request(app)
+      .post('/negotiate/done')
+      .set(authHeader(tokenA))
+      .send({
+        negotiation_id: create.body.room_id,
+      });
+    const contractId = done.body.contract?.id as string;
+    const initialAttestationId = done.body.contract?.attestation_id as string;
     expect(contractId).toBeTruthy();
     expect(initialAttestationId).toBeTruthy();
 
@@ -403,7 +417,7 @@ describe('Negotiation API', () => {
         structured: true,
         offer: { price: 250, timeline: '1 week' },
       });
-    const second = await request(app)
+    await request(app)
       .post('/negotiate/offer')
       .set(authHeader(tokenB))
       .send({
@@ -411,7 +425,13 @@ describe('Negotiation API', () => {
         structured: true,
         offer: { price: 245, timeline: '1 week' },
       });
-    const contractId = second.body.contract?.id as string;
+    const done = await request(app)
+      .post('/negotiate/done')
+      .set(authHeader(tokenA))
+      .send({
+        negotiation_id: create.body.room_id,
+      });
+    const contractId = done.body.contract?.id as string;
 
     const affirm = await request(app)
       .post(`/contract/${contractId}/affirm`)

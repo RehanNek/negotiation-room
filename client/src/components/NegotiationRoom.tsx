@@ -101,11 +101,11 @@ function orientSuggestionForRole(text: string, role: 'A' | 'B'): string {
 function normalizeSuggestionText(input: unknown): string {
   if (typeof input === 'string') {
     const cleaned = input.trim();
-    return cleaned || 'No suggestion generated for this round.';
+    return cleaned || 'No suggestion generated for this negotiation.';
   }
 
   if (!input || typeof input !== 'object') {
-    return 'No suggestion generated for this round.';
+    return 'No suggestion generated for this negotiation.';
   }
 
   const record = input as Record<string, unknown>;
@@ -114,7 +114,7 @@ function normalizeSuggestionText(input: unknown): string {
   ) as string | undefined;
 
   if (nested) return nested.trim();
-  return 'No suggestion generated for this round.';
+  return 'No suggestion generated for this negotiation.';
 }
 
 function loadStoredPrivateInputs(negotiationId: string, walletAddress: string): Record<string, unknown> {
@@ -133,6 +133,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   const [negotiation, setNegotiation] = useState<NegotiationViewModel | null>(null);
   const [offer, setOffer] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
   const [error, setError] = useState('');
   const [suggestion, setSuggestion] = useState<NegotiationSuggestion | null>(null);
   const [shareFeedback, setShareFeedback] = useState('');
@@ -176,11 +177,6 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     if (!negotiation) return 'B';
     return walletAddress === negotiation.party_a_wallet ? 'A' : 'B';
   }, [negotiation, walletAddress]);
-
-  const nextRoundNumber = negotiation ? negotiation.current_round + 1 : 1;
-  const alreadySubmittedForCurrentRound = Boolean(
-    negotiation?.rounds.some((round) => round.round_number === nextRoundNumber && round.party === role)
-  );
 
   const statusCopy = negotiation ? negotiationStatusCopy(negotiation.status) : null;
 
@@ -269,16 +265,24 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
       }
       setOffer('');
       await poll();
-
-      if (result.negotiation_status === 'deal') {
-        notifyCompletion('deal', result.contract?.id);
-      } else if (result.negotiation_status === 'impasse') {
-        notifyCompletion('impasse');
-      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to submit offer');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDone() {
+    setMarkingDone(true);
+    setError('');
+    try {
+      const result = await api.completeNegotiation({ negotiation_id: negotiationId });
+      await poll();
+      notifyCompletion('deal', result.contract?.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to finalize negotiation');
+    } finally {
+      setMarkingDone(false);
     }
   }
 
@@ -297,7 +301,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     return <div className="card animate-pulse p-5 text-sm text-[var(--muted-ink)]">Loading negotiation room...</div>;
   }
 
-  const canSubmit = negotiation.status === 'active' && !alreadySubmittedForCurrentRound;
+  const canSendMessage = negotiation.status === 'active';
   const counterpartyLabel = counterpartyWallet
     ? counterpartyWallet.toLowerCase() === walletAddress.toLowerCase()
       ? 'Counterparty'
@@ -322,9 +326,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
               <p className="text-xs text-[var(--muted-ink)]">
                 You ({formatWallet(walletAddress)}) chatting with {counterpartyLabel}
               </p>
-              <p className="text-xs text-[var(--muted-ink)]">
-                {negotiation.deal_type} · round {negotiation.current_round}/{negotiation.max_rounds}
-              </p>
+              <p className="text-xs text-[var(--muted-ink)]">{negotiation.deal_type} contract negotiation</p>
             </div>
           </div>
           <StatusPill label={statusCopy.label} tone={statusCopy.tone} pulse={negotiation.status === 'active'} />
@@ -459,21 +461,29 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                 <button
                   type="button"
                   onClick={handleSubmitOffer}
-                  disabled={submitting || !offer.trim() || !canSubmit}
+                  disabled={submitting || markingDone || !offer.trim() || !canSendMessage}
                   className="button-primary h-11 px-4"
                 >
                   {submitting ? 'Sending...' : 'Send'}
                 </button>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-[var(--muted-ink)]">
-                  {canSubmit
-                    ? `Your turn. Round ${nextRoundNumber}.`
-                    : 'Waiting for counterparty reply before your next message.'}
-                </p>
-                <button type="button" onClick={handleWalkAway} className="button-ghost text-xs text-[var(--danger)] hover:border-[var(--danger)]">
-                  Walk Away
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDone}
+                  disabled={submitting || markingDone || !canSendMessage}
+                  className="button-secondary text-xs"
+                >
+                  {markingDone ? 'Finalizing...' : 'Done'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleWalkAway}
+                  disabled={submitting || markingDone || !canSendMessage}
+                  className="button-ghost text-xs text-[var(--danger)] hover:border-[var(--danger)]"
+                >
+                  Walk away
                 </button>
               </div>
 
@@ -489,7 +499,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         <InfoCallout title="Current State" description={statusCopy.description} tone={statusCopy.tone} />
 
         {suggestion?.suggestion ? (
-          <InfoCallout title="AI Negotiation Hint (for you)" description={suggestion.suggestion} tone="info">
+          <InfoCallout title="AI Negotiation Hint (next move)" description={suggestion.suggestion} tone="info">
             <OfferTermsView terms={suggestion.suggested_terms} title="Suggested Terms" compact />
           </InfoCallout>
         ) : null}

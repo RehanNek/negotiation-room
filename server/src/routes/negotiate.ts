@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createNegotiation, joinNegotiation, submitOffer, walkAway, getNegotiationStatus } from '../services/negotiation';
+import { createNegotiation, finalizeNegotiationDeal, joinNegotiation, submitOffer, walkAway, getNegotiationStatus } from '../services/negotiation';
 import { badRequest } from '../errors';
 import { requireAuth } from '../services/auth';
 import { requireBodyFields, route } from './utils';
@@ -41,6 +41,14 @@ router.post('/walkaway', requireAuth, route((req, res) => {
   requireBodyFields(req.body, ['negotiation_id']);
   if (!req.authWallet) throw badRequest('No authenticated wallet found');
   const result = walkAway(negotiation_id, req.authWallet);
+  res.json(result);
+}));
+
+router.post('/done', requireAuth, route(async (req, res) => {
+  const { negotiation_id } = req.body;
+  requireBodyFields(req.body, ['negotiation_id']);
+  if (!req.authWallet) throw badRequest('No authenticated wallet found');
+  const result = await finalizeNegotiationDeal(negotiation_id, req.authWallet);
   res.json(result);
 }));
 

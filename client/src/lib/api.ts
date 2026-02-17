@@ -4,6 +4,8 @@ import type {
   AttestationVerification,
   AuthChallenge,
   AuthSession,
+  CompleteNegotiationPayload,
+  CompleteNegotiationResponse,
   ContractViewModel,
   CreateNegotiationPayload,
   CreateNegotiationResponse,
@@ -121,6 +123,12 @@ export const api = {
 
   submitOffer: (data: SubmitOfferPayload) =>
     request<SubmitOfferResponse>('/negotiate/offer', {
+      method: 'POST',
+      body: JSON.stringify(withLegacyWallet(data)),
+    }),
+
+  completeNegotiation: (data: CompleteNegotiationPayload) =>
+    request<CompleteNegotiationResponse>('/negotiate/done', {
       method: 'POST',
       body: JSON.stringify(withLegacyWallet(data)),
     }),

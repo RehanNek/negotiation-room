@@ -103,7 +103,7 @@ export default function ProfilePage() {
           <section className="grid gap-4 md:grid-cols-[1.1fr_1fr]">
             <EvidencePanel title="Reputation Diagnostics" subtitle="Layered details for judges and technical reviewers.">
               <div className="grid gap-2 text-sm md:grid-cols-2">
-                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Average Rounds: {reputation.avg_rounds.toFixed(2)}</p>
+                <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Average Messages: {reputation.avg_rounds.toFixed(2)}</p>
                 <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Conditional Deals: {reputation.conditional_deals}</p>
                 <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Contracts Seen: {summary.total}</p>
                 <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Last Updated: {formatTimestamp(reputation.last_updated)}</p>
@@ -112,7 +112,7 @@ export default function ProfilePage() {
               <details className="rounded-xl border border-[var(--line)] bg-white/70 p-3">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Technical scoring interpretation</summary>
                 <p className="mt-2 text-sm text-[var(--muted-ink)]">
-                  Reputation captures negotiated outcomes, round efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
+                  Reputation captures negotiated outcomes, chat efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
                   anchored by attested process records.
                 </p>
               </details>

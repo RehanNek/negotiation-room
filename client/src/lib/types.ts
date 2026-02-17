@@ -133,6 +133,11 @@ export interface SubmitOfferResponse {
   contract?: ContractViewModel;
 }
 
+export interface CompleteNegotiationResponse {
+  status: 'deal';
+  contract: ContractViewModel;
+}
+
 export interface ResolveConditionResponse {
   contract_id: string;
   verdict: ConditionVerdict;
@@ -169,5 +174,10 @@ export interface SubmitOfferPayload {
   negotiation_id: string;
   offer: string | Record<string, unknown>;
   structured?: boolean;
+  wallet_address?: string;
+}
+
+export interface CompleteNegotiationPayload {
+  negotiation_id: string;
   wallet_address?: string;
 }

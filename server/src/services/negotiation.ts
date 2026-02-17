@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { run, get, all, flushDb } from '../db';
-import { parseOfferToStructured, generateSuggestion, analyzeConvergence, generateContractSummary } from './ai';
-import { createContract } from './contract';
+import { parseOfferToStructured, generateSuggestion, generateContractSummary } from './ai';
+import { createContract, getContract } from './contract';
 import { updateReputation } from './reputation';
 import { conflict, forbidden, notFound } from '../errors';
 import { isDemoModeEnabled } from './auth';
@@ -129,15 +129,13 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
     'SELECT * FROM rounds WHERE negotiation_id = ? ORDER BY round_number, created_at',
     [req.negotiation_id]
   );
-
-  const currentRoundNumber = (neg.current_round as number) + 1;
-  const currentRoundOffers = existingRounds.filter((r: any) => r.round_number === currentRoundNumber);
+  const messageIndex = existingRounds.length + 1;
 
   let party: 'A' | 'B';
   if (neg.party_a_wallet === neg.party_b_wallet) {
-    // Demo mode: same wallet is both parties — auto-alternate
-    const aSubmitted = currentRoundOffers.some((r: any) => r.party === 'A');
-    party = aSubmitted ? 'B' : 'A';
+    // Demo mode: same wallet is both parties — alternate per message.
+    const previousParty = existingRounds.length > 0 ? (existingRounds[existingRounds.length - 1]?.party as 'A' | 'B') : null;
+    party = previousParty === 'A' ? 'B' : 'A';
   } else if (req.wallet_address === neg.party_a_wallet) {
     party = 'A';
   } else if (req.wallet_address === neg.party_b_wallet) {
@@ -145,9 +143,6 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   } else {
     throw forbidden('You are not a participant in this negotiation');
   }
-
-  const alreadySubmitted = currentRoundOffers.some((r: any) => r.party === party);
-  if (alreadySubmitted) throw conflict('You already submitted an offer for this round');
 
   let offerStructured: Record<string, any>;
   let offerRaw: string;
@@ -164,70 +159,100 @@ export async function submitOffer(req: SubmitOfferRequest): Promise<{
   const constraints = party === 'A'
     ? JSON.parse(neg.party_a_constraints as string)
     : JSON.parse(neg.party_b_constraints as string);
-  const allRounds: FinalRoundSnapshot[] = existingRounds.map((r: any) => ({
+  const allRoundsBeforeMessage: FinalRoundSnapshot[] = existingRounds.map((r: any) => ({
     party: r.party as string,
     offer_raw: r.offer_raw as string,
     offer_structured: JSON.parse(r.offer_structured as string),
   }));
-
-  const suggestion = await generateSuggestion(
-    neg.category as string,
-    JSON.parse(neg.params as string),
-    allRounds,
-    party,
-    constraints
-  );
+  const allRoundsNow: FinalRoundSnapshot[] = [
+    ...allRoundsBeforeMessage,
+    { party, offer_raw: offerRaw, offer_structured: offerStructured },
+  ];
 
   const roundId = uuidv4();
   run(
     `INSERT INTO rounds (id, negotiation_id, round_number, party, offer_raw, offer_structured, ai_suggestion) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [roundId, req.negotiation_id, currentRoundNumber, party, offerRaw, JSON.stringify(offerStructured), suggestion.suggestion]
+    [roundId, req.negotiation_id, messageIndex, party, offerRaw, JSON.stringify(offerStructured), null]
   );
+  run(`UPDATE negotiations SET current_round = ?, updated_at = datetime('now') WHERE id = ?`, [messageIndex, req.negotiation_id]);
 
-  const updatedRoundOffers = currentRoundOffers.length + 1;
-  if (updatedRoundOffers >= 2) {
-    run(`UPDATE negotiations SET current_round = ?, updated_at = datetime('now') WHERE id = ?`, [currentRoundNumber, req.negotiation_id]);
-
-    const allRoundsNow: FinalRoundSnapshot[] = [...allRounds, { party, offer_raw: offerRaw, offer_structured: offerStructured }];
-    const convergence = await analyzeConvergence(
-      allRoundsNow.map((round) => ({ party: round.party, offer_structured: round.offer_structured }))
-    );
-
-    if (convergence.converging && convergence.gap_percentage < 20) {
-      run(`UPDATE negotiations SET status = 'deal', updated_at = datetime('now') WHERE id = ?`, [req.negotiation_id]);
-
-      const contract = await finalizeContract(neg, allRoundsNow);
-      updateReputation(neg.party_a_wallet as string, 'deal', currentRoundNumber);
-      updateReputation(neg.party_b_wallet as string, 'deal', currentRoundNumber);
-      flushDb();
-
-      return {
-        round: { id: roundId, round_number: currentRoundNumber, party, offer_structured: offerStructured },
-        suggestion,
-        negotiation_status: 'deal',
-        contract,
-      };
-    }
-
-    if (currentRoundNumber >= (neg.max_rounds as number)) {
-      run(`UPDATE negotiations SET status = 'impasse', updated_at = datetime('now') WHERE id = ?`, [req.negotiation_id]);
-      updateReputation(neg.party_a_wallet as string, 'impasse', currentRoundNumber);
-      updateReputation(neg.party_b_wallet as string, 'impasse', currentRoundNumber);
-      flushDb();
-
-      return {
-        round: { id: roundId, round_number: currentRoundNumber, party, offer_structured: offerStructured },
-        suggestion,
-        negotiation_status: 'impasse',
-      };
-    }
-  }
+  const suggestion = await generateSuggestion(
+    neg.category as string,
+    JSON.parse(neg.params as string),
+    allRoundsNow,
+    party,
+    constraints
+  );
+  run(`UPDATE rounds SET ai_suggestion = ? WHERE id = ?`, [suggestion.suggestion, roundId]);
+  flushDb();
 
   return {
-    round: { id: roundId, round_number: currentRoundNumber, party, offer_structured: offerStructured },
+    round: { id: roundId, round_number: messageIndex, party, offer_structured: offerStructured },
     suggestion,
     negotiation_status: 'active',
   };
+}
+
+export async function finalizeNegotiationDeal(negotiationId: string, walletAddress: string): Promise<{
+  status: 'deal';
+  contract: any;
+}> {
+  const neg = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
+  if (!neg) throw notFound('Negotiation not found');
+  if (walletAddress !== neg.party_a_wallet && walletAddress !== neg.party_b_wallet) {
+    throw forbidden('You are not a participant in this negotiation');
+  }
+
+  if (neg.status === 'waiting') {
+    throw conflict('Counterparty has not joined this negotiation');
+  }
+  if (neg.status === 'no_deal' || neg.status === 'impasse') {
+    throw conflict('Negotiation is closed');
+  }
+
+  const existingContractRow = get(
+    `SELECT id FROM contracts WHERE negotiation_id = ? ORDER BY created_at DESC LIMIT 1`,
+    [negotiationId]
+  );
+  if (existingContractRow?.id) {
+    if (neg.status !== 'deal') {
+      run(`UPDATE negotiations SET status = 'deal', updated_at = datetime('now') WHERE id = ?`, [negotiationId]);
+      flushDb();
+    }
+    const existingContract = getContract(existingContractRow.id as string, walletAddress);
+    if (!existingContract) throw notFound('Contract not found');
+    return { status: 'deal', contract: existingContract };
+  }
+
+  const rows = all(
+    'SELECT party, offer_raw, offer_structured FROM rounds WHERE negotiation_id = ? ORDER BY round_number, created_at',
+    [negotiationId]
+  );
+  if (rows.length === 0) {
+    throw conflict('Cannot mark done before any messages are sent');
+  }
+
+  const rounds: FinalRoundSnapshot[] = rows.map((row: any) => ({
+    party: row.party as string,
+    offer_raw: row.offer_raw as string,
+    offer_structured: JSON.parse(row.offer_structured as string),
+  }));
+
+  if (neg.party_a_wallet !== neg.party_b_wallet) {
+    const hasA = rounds.some((round) => round.party === 'A');
+    const hasB = rounds.some((round) => round.party === 'B');
+    if (!hasA || !hasB) {
+      throw conflict('Both parties must send at least one message before marking done');
+    }
+  }
+
+  run(`UPDATE negotiations SET status = 'deal', updated_at = datetime('now') WHERE id = ?`, [negotiationId]);
+  const contract = await finalizeContract(neg, rounds);
+  updateReputation(neg.party_a_wallet as string, 'deal', rounds.length);
+  updateReputation(neg.party_b_wallet as string, 'deal', rounds.length);
+  flushDb();
+
+  return { status: 'deal', contract };
 }
 
 async function finalizeContract(neg: any, rounds: FinalRoundSnapshot[]): Promise<any> {

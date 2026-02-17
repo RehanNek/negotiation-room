@@ -11,7 +11,7 @@ describe('status copy', () => {
     expect(negotiationStatusCopy('deal')).toEqual({
       label: 'Deal Reached',
       tone: 'success',
-      description: 'Terms converged. Contract generation complete.',
+      description: 'Done confirmed. Contract generation complete.',
     });
   });
 
