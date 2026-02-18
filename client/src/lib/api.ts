@@ -90,7 +90,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ status: string; service: string; timestamp: string }>('/health'),
+  health: () => request<{ status: string; service: string; timestamp: string; escrow_enabled?: boolean }>('/health'),
 
   createAuthChallenge: (wallet_address: string) =>
     request<AuthChallenge>('/auth/challenge', {

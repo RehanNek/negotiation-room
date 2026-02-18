@@ -144,6 +144,9 @@ export interface FinalizeNegotiationRequest {
   wallet_address: string;
   terms_hash?: string;
   escrow_amount_eth?: string;
+  timeline?: string;
+  deliverables?: string;
+  notes?: string;
 }
 
 export interface FinalizeNegotiationPendingResult {

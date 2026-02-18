@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { AUTH_CHANGED_EVENT } from '@/lib/events';
 import { formatWallet } from '@/lib/formatters';
 
 const NAV_ITEMS = [
@@ -21,39 +22,45 @@ export default function MissionHeader() {
 
   useEffect(() => {
     let mounted = true;
-    const saved = localStorage.getItem('wallet_address');
-    const token = localStorage.getItem('auth_token');
 
-    if (!saved || !token) {
-      localStorage.removeItem('wallet_address');
-      localStorage.removeItem('auth_token');
-      void Promise.resolve().then(() => {
+    async function refreshSession() {
+      const saved = localStorage.getItem('wallet_address');
+      const token = localStorage.getItem('auth_token');
+
+      if (!saved || !token) {
+        localStorage.removeItem('wallet_address');
+        localStorage.removeItem('auth_token');
         if (!mounted) return;
         setWallet(null);
         setMode(null);
-      });
-      return () => {
-        mounted = false;
-      };
-    }
+        return;
+      }
 
-    api.me()
-      .then((session) => {
+      try {
+        const session = await api.me();
         if (!mounted) return;
         localStorage.setItem('wallet_address', session.wallet_address);
         setWallet(session.wallet_address || saved);
         setMode(session.mode);
-      })
-      .catch(() => {
+      } catch {
         if (!mounted) return;
         localStorage.removeItem('wallet_address');
         localStorage.removeItem('auth_token');
         setWallet(null);
         setMode(null);
-      });
+      }
+    }
+
+    function handleAuthChanged() {
+      void refreshSession();
+    }
+
+    void refreshSession();
+    window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
 
     return () => {
       mounted = false;
+      window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
     };
   }, [pathname]);
 

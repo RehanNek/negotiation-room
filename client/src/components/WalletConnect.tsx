@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { emitAuthChanged } from '@/lib/events';
 import { formatWallet } from '@/lib/formatters';
 
 interface WalletConnectProps {
@@ -37,6 +38,7 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
       localStorage.removeItem('wallet_address');
       localStorage.removeItem('auth_token');
       onConnect('');
+      emitAuthChanged();
       return;
     }
 
@@ -46,12 +48,14 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
         if (!mounted) return;
         localStorage.setItem('wallet_address', session.wallet_address);
         onConnect(session.wallet_address || saved);
+        emitAuthChanged();
       })
       .catch(() => {
         if (!mounted) return;
         localStorage.removeItem('wallet_address');
         localStorage.removeItem('auth_token');
         onConnect('');
+        emitAuthChanged();
       });
 
     return () => {
@@ -80,10 +84,12 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
       localStorage.setItem('wallet_address', session.wallet_address);
       localStorage.setItem('auth_token', session.token);
       onConnect(session.wallet_address);
+      emitAuthChanged();
     } catch (error: unknown) {
       localStorage.removeItem('wallet_address');
       localStorage.removeItem('auth_token');
       onConnect('');
+      emitAuthChanged();
       throw error;
     }
   }
@@ -105,6 +111,7 @@ export default function WalletConnect({ onConnect, address, compact = false }: W
     localStorage.removeItem('wallet_address');
     localStorage.removeItem('auth_token');
     onConnect('');
+    emitAuthChanged();
   }
 
   if (address) {

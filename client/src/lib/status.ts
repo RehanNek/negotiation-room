@@ -13,7 +13,7 @@ export function negotiationStatusCopy(status: NegotiationStatus): StatusCopy {
     case 'waiting':
       return { label: 'Waiting', tone: 'warning', description: 'Share the room code so the other party can join.' };
     case 'active':
-      return { label: 'Live', tone: 'success', description: 'Send messages, then use Confirm Terms & Done once terms are aligned.' };
+      return { label: 'Live', tone: 'success', description: 'Send messages, then press Done to confirm the shared agreement.' };
     case 'deal':
       return { label: 'Deal Reached', tone: 'success', description: 'Done confirmed. Contract generation complete.' };
     case 'impasse':

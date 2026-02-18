@@ -30,6 +30,9 @@ const LABEL_OVERRIDES: Record<string, string> = {
   acceptance_criteria: 'Completion Rule',
   resolution_date: 'Resolution Date',
   condition_desc: 'Condition',
+  agreement: 'Agreement',
+  amount_eth: 'Amount (ETH)',
+  notes: 'Additional notes',
 };
 
 const INTERNAL_TERM_KEYS = new Set([
@@ -128,6 +131,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 export function selectDisplayTerms(terms: unknown): unknown {
   const record = asRecord(terms);
   if (!record) return terms;
+
+  if (asRecord(record.agreement)) {
+    return record.agreement;
+  }
 
   if (asRecord(record.agreed_terms)) {
     return record.agreed_terms;

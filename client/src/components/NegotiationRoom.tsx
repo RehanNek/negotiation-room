@@ -197,7 +197,12 @@ function prefillEscrowAmountFromTerms(terms: Record<string, unknown> | null | un
 export default function NegotiationRoom({ negotiationId, walletAddress, onComplete }: NegotiationRoomProps) {
   const [negotiation, setNegotiation] = useState<NegotiationViewModel | null>(null);
   const [offer, setOffer] = useState('');
-  const [escrowAmountEth, setEscrowAmountEth] = useState('');
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [doneAmountEth, setDoneAmountEth] = useState('');
+  const [doneTimeline, setDoneTimeline] = useState('');
+  const [doneDeliverables, setDoneDeliverables] = useState('');
+  const [doneNotes, setDoneNotes] = useState('');
+  const [doneError, setDoneError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
   const [pendingTermsHash, setPendingTermsHash] = useState<string | null>(null);
@@ -213,7 +218,12 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   }, [negotiationId, walletAddress]);
 
   useEffect(() => {
-    setEscrowAmountEth('');
+    setDoneOpen(false);
+    setDoneAmountEth('');
+    setDoneTimeline('');
+    setDoneDeliverables('');
+    setDoneNotes('');
+    setDoneError('');
   }, [negotiationId, walletAddress]);
 
   const notifyCompletion = useCallback(
@@ -330,15 +340,6 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     }
   }, [negotiation]);
 
-  useEffect(() => {
-    if (escrowAmountEth.trim()) return;
-    const termsDraft = (negotiation?.final_terms_draft as Record<string, unknown> | null | undefined) || pendingTermsDraft;
-    const prefilled = prefillEscrowAmountFromTerms(termsDraft);
-    if (prefilled) {
-      setEscrowAmountEth(prefilled);
-    }
-  }, [escrowAmountEth, negotiation?.final_terms_draft, pendingTermsDraft]);
-
   function showShareFeedback(message: string) {
     setShareFeedback(message);
     window.setTimeout(() => {
@@ -399,22 +400,28 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     }
   }
 
-  async function handleDone() {
-    const normalizedEscrowAmount = normalizeEscrowAmountInput(escrowAmountEth);
-    if (!normalizedEscrowAmount) {
-      setError('Enter a valid escrow amount in ETH before confirming done.');
+  async function handleConfirmDone() {
+    const normalizedAmountEth = normalizeEscrowAmountInput(doneAmountEth);
+    if (!normalizedAmountEth) {
+      setDoneError('Amount is required. Enter a valid amount in ETH.');
       return;
     }
 
     setMarkingDone(true);
     setError('');
+    setDoneError('');
     try {
-      setEscrowAmountEth(normalizedEscrowAmount);
+      setDoneAmountEth(normalizedAmountEth);
       const result = await api.completeNegotiation({
         negotiation_id: negotiationId,
         terms_hash: negotiation?.final_terms_hash || pendingTermsHash || undefined,
-        escrow_amount_eth: normalizedEscrowAmount,
+        escrow_amount_eth: normalizedAmountEth,
+        timeline: doneTimeline.trim() ? doneTimeline.trim() : undefined,
+        deliverables: doneDeliverables.trim() ? doneDeliverables.trim() : undefined,
+        notes: doneNotes.trim() ? doneNotes.trim() : undefined,
       });
+
+      setDoneOpen(false);
 
       if (result.status === 'awaiting_other_party_confirmation') {
         setPendingTermsHash(result.terms_hash);
@@ -426,7 +433,8 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
       await poll();
       notifyCompletion('deal', result.contract?.id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to finalize negotiation');
+      const message = err instanceof Error ? err.message : 'Failed to finalize negotiation';
+      setDoneError(message);
     } finally {
       setMarkingDone(false);
     }
@@ -472,10 +480,43 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   );
   const myConfirmed = role === 'A' ? partyAConfirmed : partyBConfirmed;
   const otherConfirmed = role === 'A' ? partyBConfirmed : partyAConfirmed;
-  const doneButtonLabel = myConfirmed && !otherConfirmed
-    ? 'Waiting For Other Party'
-    : 'Confirm Terms & Done';
-  const normalizedEscrowAmount = normalizeEscrowAmountInput(escrowAmountEth);
+  const doneButtonLabel = myConfirmed && !otherConfirmed ? 'Done (waiting)' : 'Done';
+
+  function openDoneModal() {
+    setError('');
+    setDoneError('');
+
+    const agreement = termsDraft && typeof termsDraft === 'object' && !Array.isArray(termsDraft)
+      ? (termsDraft as Record<string, unknown>).agreement
+      : null;
+    const agreementRecord = agreement && typeof agreement === 'object' && !Array.isArray(agreement)
+      ? (agreement as Record<string, unknown>)
+      : null;
+
+    const prefilledAmount = agreementRecord && typeof agreementRecord.amount_eth === 'string'
+      ? agreementRecord.amount_eth
+      : prefillEscrowAmountFromTerms(termsDraft);
+    if (prefilledAmount) {
+      setDoneAmountEth(prefilledAmount);
+    }
+
+    const deliverablesPrefill = agreementRecord?.deliverables ?? (termsDraft as any)?.agreed_terms?.deliverables;
+    if (typeof deliverablesPrefill === 'string' && deliverablesPrefill.trim()) {
+      setDoneDeliverables(deliverablesPrefill.trim());
+    }
+
+    const timelinePrefill = agreementRecord?.timeline ?? (termsDraft as any)?.agreed_terms?.timeline ?? (termsDraft as any)?.agreed_terms?.schedule;
+    if (typeof timelinePrefill === 'string' && timelinePrefill.trim()) {
+      setDoneTimeline(timelinePrefill.trim());
+    }
+
+    const notesPrefill = agreementRecord?.notes;
+    if (typeof notesPrefill === 'string' && notesPrefill.trim()) {
+      setDoneNotes(notesPrefill.trim());
+    }
+
+    setDoneOpen(true);
+  }
 
   return (
     <section className="grid gap-4 lg:grid-cols-[1.75fr_1fr]">
@@ -549,7 +590,9 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
               {negotiation.rounds.length === 0 ? (
                 <div className="flex justify-center">
                   <p className="rounded-2xl border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-[var(--muted-ink)]">
-                    No messages yet. Send the opening proposal.
+                    {negotiation.status === 'waiting'
+                      ? 'Waiting for the other party to join. Once they join, you can start chatting here.'
+                      : 'No messages yet. Send the opening message.'}
                   </p>
                 </div>
               ) : (
@@ -617,45 +660,22 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
             <div className="space-y-3">
               {termsDraft && termsHash ? (
                 <div className="space-y-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
-                      Draft Terms To Confirm
-                    </p>
-                    <code className="text-[11px] text-[var(--muted-ink)]">
-                      {termsHash.slice(0, 12)}...{termsHash.slice(-8)}
-                    </code>
-                  </div>
-                  <OfferTermsView terms={termsDraft} compact title="Shared Draft Terms" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Draft agreement (shared)
+                  </p>
+                  <OfferTermsView terms={termsDraft} compact title="Draft agreement" />
                   <div className="grid gap-2 text-xs md:grid-cols-2">
                     <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
-                      {isSelfNegotiation ? 'Party A (you):' : `Party A (${role === 'A' ? 'you' : 'counterparty'}):`}{' '}
+                      {isSelfNegotiation ? 'You (side A):' : `${role === 'A' ? 'You' : 'Counterparty'} (side A):`}{' '}
                       <span className="font-semibold">{partyAConfirmed ? 'Confirmed' : 'Pending'}</span>
                     </p>
                     <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
-                      {isSelfNegotiation ? 'Party B (you):' : `Party B (${role === 'B' ? 'you' : 'counterparty'}):`}{' '}
+                      {isSelfNegotiation ? 'You (side B):' : `${role === 'B' ? 'You' : 'Counterparty'} (side B):`}{' '}
                       <span className="font-semibold">{partyBConfirmed ? 'Confirmed' : 'Pending'}</span>
                     </p>
                   </div>
                 </div>
               ) : null}
-
-              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-                <label className="block space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
-                    Confirm Escrow Amount (ETH)
-                  </span>
-                  <input
-                    value={escrowAmountEth}
-                    onChange={(event) => setEscrowAmountEth(event.target.value)}
-                    placeholder="0.01"
-                    inputMode="decimal"
-                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
-                  />
-                </label>
-                <p className="mt-2 text-xs text-[var(--muted-ink)]">
-                  Both parties must confirm the same escrow amount before the contract is finalized.
-                </p>
-              </div>
 
               <div className="flex items-end gap-2">
                 <textarea
@@ -677,12 +697,11 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleDone}
+                  onClick={openDoneModal}
                   disabled={
                     submitting ||
                     markingDone ||
                     !canSendMessage ||
-                    !normalizedEscrowAmount ||
                     (myConfirmed && !otherConfirmed)
                   }
                   className="button-secondary text-xs"
@@ -701,10 +720,124 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
 
               {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
             </div>
+          ) : negotiation.status === 'waiting' ? (
+            <InfoCallout
+              title="Waiting for the other party"
+              description="Share the invite above. Once they join, your chat controls will appear here."
+              tone="warning"
+            />
+          ) : negotiation.status === 'deal' ? (
+            <InfoCallout
+              title="Deal reached"
+              description="Agreement is confirmed. The contract view will update automatically."
+              tone="success"
+            />
           ) : (
-            <InfoCallout title="Negotiation Closed" description="No more messages can be sent for this room." />
+            <InfoCallout title="Negotiation closed" description="No more messages can be sent for this room." tone="danger" />
           )}
         </footer>
+
+        {doneOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-10">
+            <div className="w-full max-w-xl rounded-3xl border border-[var(--line)] bg-[var(--surface-1)] p-5 shadow-xl md:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-display text-3xl text-[var(--ink)]">Confirm Agreement</h3>
+                  <p className="mt-1 text-sm text-[var(--muted-ink)]">
+                    This draft will be shared with both parties and used to lock funds in escrow. Amount is required.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDoneOpen(false);
+                    setDoneError('');
+                  }}
+                  className="button-ghost text-xs"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Amount (ETH) <span className="text-[var(--danger)]">*</span>
+                  </span>
+                  <input
+                    value={doneAmountEth}
+                    onChange={(event) => setDoneAmountEth(event.target.value)}
+                    placeholder="0.01"
+                    inputMode="decimal"
+                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Timeline <span className="text-[var(--muted-ink)]">(optional)</span>
+                  </span>
+                  <input
+                    value={doneTimeline}
+                    onChange={(event) => setDoneTimeline(event.target.value)}
+                    placeholder="e.g. 5 days, Feb 20 to Feb 23"
+                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Deliverables <span className="text-[var(--muted-ink)]">(optional)</span>
+                  </span>
+                  <textarea
+                    value={doneDeliverables}
+                    onChange={(event) => setDoneDeliverables(event.target.value)}
+                    rows={2}
+                    placeholder="e.g. 3 recorded lessons, 10 labeled images"
+                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
+                    Additional notes <span className="text-[var(--muted-ink)]">(optional)</span>
+                  </span>
+                  <textarea
+                    value={doneNotes}
+                    onChange={(event) => setDoneNotes(event.target.value)}
+                    rows={2}
+                    placeholder="Anything else you want recorded in the agreement."
+                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                  />
+                </label>
+              </div>
+
+              {doneError ? <p className="mt-3 text-sm text-[var(--danger)]">{doneError}</p> : null}
+
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDoneOpen(false);
+                    setDoneError('');
+                  }}
+                  className="button-secondary text-sm"
+                  disabled={markingDone}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDone}
+                  className="button-primary text-sm"
+                  disabled={markingDone}
+                >
+                  {markingDone ? 'Confirming...' : 'Confirm & Done'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </article>
 
       <aside className="space-y-4 lg:sticky lg:top-28 lg:h-fit">

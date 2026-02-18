@@ -45,14 +45,19 @@ router.post('/walkaway', requireAuth, route((req, res) => {
 }));
 
 router.post('/done', requireAuth, route(async (req, res) => {
-  const { negotiation_id, terms_hash, escrow_amount_eth } = req.body;
+  const { negotiation_id, terms_hash, escrow_amount_eth, timeline, deliverables, notes } = req.body;
   requireBodyFields(req.body, ['negotiation_id']);
   if (!req.authWallet) throw badRequest('No authenticated wallet found');
   const result = await finalizeNegotiationDeal(
     negotiation_id,
     req.authWallet,
     typeof terms_hash === 'string' ? terms_hash : undefined,
-    typeof escrow_amount_eth === 'string' ? escrow_amount_eth : undefined
+    typeof escrow_amount_eth === 'string' ? escrow_amount_eth : undefined,
+    {
+      timeline: typeof timeline === 'string' ? timeline : undefined,
+      deliverables: typeof deliverables === 'string' ? deliverables : undefined,
+      notes: typeof notes === 'string' ? notes : undefined,
+    }
   );
   res.json(result);
 }));
