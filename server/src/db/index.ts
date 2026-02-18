@@ -6,11 +6,21 @@ import { initializeDatabase } from './schema';
 let db: Database;
 let dirty = false;
 let flushInterval: NodeJS.Timeout | null = null;
+let persistenceEnabled = true;
 
 const dbPath = process.env.DATABASE_PATH || './data/room.db';
 const flushIntervalMs = Number.parseInt(process.env.DB_FLUSH_INTERVAL_MS || '2000', 10);
 
+function disablePersistence(reason: unknown): void {
+  if (!persistenceEnabled) return;
+  persistenceEnabled = false;
+  dirty = false;
+  const message = reason instanceof Error ? reason.message : String(reason);
+  console.warn(`DB persistence disabled; running in-memory only (${dbPath}). Reason: ${message}`);
+}
+
 function ensureFlushInterval(): void {
+  if (!persistenceEnabled) return;
   if (flushInterval) return;
 
   flushInterval = setInterval(() => {
@@ -36,41 +46,52 @@ export async function getDb(): Promise<Database> {
   if (db) return db;
 
   const SQL = await initSqlJs();
+  db = new SQL.Database();
 
-  // Ensure directory exists
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
-  }
+  if (persistenceEnabled) {
+    try {
+      const dbDir = path.dirname(dbPath);
+      if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+      }
 
-  // Load existing DB or create new
-  if (fs.existsSync(dbPath)) {
-    const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
-  } else {
-    db = new SQL.Database();
+      if (fs.existsSync(dbPath)) {
+        const buffer = fs.readFileSync(dbPath);
+        db = new SQL.Database(buffer);
+      }
+    } catch (err) {
+      disablePersistence(err);
+      db = new SQL.Database();
+    }
   }
 
   db.run('PRAGMA foreign_keys = ON');
   initializeDatabase(db);
-  dirty = true;
-  saveDb(true);
+  if (persistenceEnabled) {
+    dirty = true;
+    saveDb(true);
+  }
   ensureFlushInterval();
 
   return db;
 }
 
 export function saveDb(force: boolean = false): void {
+  if (!persistenceEnabled) return;
   if (!db) return;
   if (!force && !dirty) return;
   const data = db.export();
   const buffer = Buffer.from(data);
   const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    fs.writeFileSync(dbPath, buffer);
+    dirty = false;
+  } catch (err) {
+    disablePersistence(err);
   }
-  fs.writeFileSync(dbPath, buffer);
-  dirty = false;
 }
 
 export function flushDb(): void {
@@ -80,7 +101,9 @@ export function flushDb(): void {
 // Helper to run queries and mark DB dirty
 export function run(sql: string, params?: any[]): void {
   db.run(sql, params);
-  dirty = true;
+  if (persistenceEnabled) {
+    dirty = true;
+  }
 }
 
 export function get(sql: string, params?: any[]): any {

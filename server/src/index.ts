@@ -25,9 +25,9 @@ async function main() {
   registerShutdownHandlers();
   const app = await createApp();
   startEscrowScheduler();
-  const PORT = parseInt(process.env.PORT || '3000', 10);
+  const PORT = parseInt(process.env.APP_PORT || process.env.PORT || '3000', 10);
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`The Room server running on port ${PORT}`);
     console.log(`EigenAI: ${process.env.EIGENAI_BASE_URL || 'not configured'}`);
     console.log(`Database: ${process.env.DATABASE_PATH || './data/room.db'}`);

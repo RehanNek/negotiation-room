@@ -12,6 +12,7 @@ RUN mkdir -p /app/data
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV APP_PORT=3000
 ENV DATABASE_PATH=/app/data/room.db
 
 EXPOSE 3000
