@@ -19,9 +19,13 @@
 - [x] POST /negotiate/join — second party joins with room ID (2026-02-15)
 - [x] POST /negotiate/offer — accepts plain English (AI parses) OR structured JSON (2026-02-15)
 - [x] GET /negotiate/status/:id — returns negotiation state + rounds (2026-02-15)
-- [x] Negotiation rounds work (3-5 rounds, convergence detection) (2026-02-15)
-- [x] Service deal produces structured contract (2026-02-15)
+- [x] Negotiation is chat-style; “rounds” are stored internally as messages (2026-02-18)
+- [x] Dual-confirm “Done” protocol (both parties confirm same terms hash) (2026-02-18)
+- [x] “Done” collects amount (required) + optional timeline/deliverables/notes (2026-02-18)
+- [x] Service deal produces structured contract (2026-02-15, refreshed 2026-02-18)
 - [x] Conditional deal produces contract with condition + resolution date (2026-02-15)
+- [x] Private constraints required on create/join; returned only to the owning party (2026-02-18)
+- [x] Walkaway closes negotiation without agreement (2026-02-15)
 
 ## Phase 3: Contract Engine
 - [x] GET /contract/:id — returns contract details (2026-02-15)
@@ -29,21 +33,33 @@
 - [x] Condition resolution works for crypto price conditions (CoinGecko) (2026-02-16)
 - [ ] Condition resolution works for event-based conditions (news APIs) — code written, not yet tested with live news
 - [x] Attestation record produced for each resolution (2026-02-16)
+- [x] Service affirmation endpoint (receiver confirms completion) (2026-02-18)
 
 ## Phase 4: Reputation System
 - [x] Reputation scoring after each negotiation (2026-02-15)
 - [x] GET /reputation/:wallet — returns reputation record (2026-02-15)
 - [ ] Reputation factors into AI negotiation prompts — partial (score passed but not heavily weighted)
 
+## Phase 5: Onchain Escrow (Sepolia ETH, Optional)
+- [x] Hardhat workspace added under contracts/ (2026-02-17)
+- [x] EscrowVault.sol implemented + ABI export (2026-02-17)
+- [x] Backend escrow table + services wired (2026-02-18)
+- [x] POST /contract/:id/escrow/prepare (2026-02-18)
+- [x] POST /contract/:id/escrow/funded (2026-02-18)
+- [x] GET /contract/:id/escrow (2026-02-18)
+- [x] Auto-relay settlement when service affirmed / condition resolved (2026-02-18)
+- [x] Scheduler for retries + timeout refunds when enabled (2026-02-18)
+
 ## Phase 5: OpenClaw Skill
 - [x] skill/skill.md written with full API docs (2026-02-15)
-- [ ] Agent can create + complete a negotiation via skill instructions — not tested end-to-end
+- [x] Agent runbook added (docs/openclaw-runbook.md) (2026-02-18)
+- [x] Agent can create + complete a negotiation via authenticated API flow (2026-02-18)
 
 ## Phase 6: Website
 - [x] Home/Dashboard page (2026-02-15)
 - [x] Negotiate page (wallet connect, deal type selection, plain English input) (2026-02-15)
-- [x] Negotiation round-by-round polling view (2026-02-15)
-- [x] My Contracts page (active, pending, resolved) (2026-02-15)
+- [x] Negotiation workspace redesigned as guided wizard + chat UI (2026-02-18)
+- [x] Contracts page redesigned for clarity + focus/highlight handoff (2026-02-18)
 - [x] My Profile page (reputation, history) (2026-02-15)
 - [x] Verify page (paste attestation ID, see proof) (2026-02-15)
 
@@ -52,10 +68,11 @@
 - [x] Deployed to EigenCompute — App ID: 0x28B7Cbf332E7e1711C11bf1472114b76793B37A8, IP: 136.109.58.88 (2026-02-16)
 - [x] TEE attestation verified on live deployment (2026-02-16)
 - [x] Website deployed — https://the-room-smoky.vercel.app (2026-02-16)
+- [x] Backend redeploys include escrow + UI-linked flows (2026-02-18)
 
 ## Phase 8: Polish + Submit
 - [ ] Edge cases handled (timeouts, errors, disconnection)
-- [ ] UI cleaned up
+- [x] UI cleaned up + simplified demo flow (2026-02-18)
 - [x] README written (2026-02-16)
 - [ ] Demo video recorded
 - [ ] Submitted via Google Form

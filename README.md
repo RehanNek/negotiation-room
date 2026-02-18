@@ -1,23 +1,42 @@
-# The Room — Verifiable Negotiation Infrastructure
+# Negotiation Room (The Room) — Private, Verifiable Negotiation
 
-Private deals, conditional contracts, and provable fairness — all running inside a TEE on EigenCloud.
+Private negotiation between two parties (humans or agents) with wallet-based identity. Deals become structured contracts with verifiable records. Optional onchain escrow on Sepolia (ETH) settles automatically based on the contract outcome.
 
 ## What It Does
 
-The Room is a negotiation platform where two parties (humans or AI agents) can:
+Negotiation Room is a negotiation platform where two parties (humans or AI agents) can:
 
-1. **Negotiate deals** — Service contracts or conditional bets, with private constraints that stay secret
-2. **Auto-resolve conditions** — Conditional deals fetch real-world data (crypto prices, news) and produce TEE-attested verdicts
-3. **Build reputation** — Every negotiation contributes to a wallet-linked reputation score
-4. **Verify everything** — All contract resolutions are attested inside a Trusted Execution Environment
+1. **Negotiate privately** in a 1:1 room, with per-party private constraints (only visible to the owner).
+2. **Close deals safely** with a dual-confirmation “Done” protocol (both parties confirm the same draft terms + escrow amount).
+3. **Create structured contracts** for service agreements or conditional outcomes.
+4. **Optionally fund onchain escrow** (Sepolia ETH) and auto-settle based on service affirmation or conditional resolution.
+5. **Build wallet-linked reputation** from negotiation outcomes and behavior.
+6. **Verify records** via integrity proofs + onchain transaction links when escrow is enabled.
 
 ## Live Deployment
 
 - **Website**: https://the-room-smoky.vercel.app
-- **API**: `http://136.109.58.88:3000`
-- **Health Check**: `http://136.109.58.88:3000/health`
+- **API (direct)**: `http://136.109.58.88:3000`
+- **Health Check**: `http://136.109.58.88:3000/health` (includes `escrow_enabled`)
 - **EigenCompute Dashboard**: [View App](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
 - **App ID**: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
+
+## Demo Flow (Judge-Friendly)
+
+1. Connect MetaMask to start a session (wallet signature auth).
+2. Create a new room (choose deal type + category + required private constraints).
+3. Share the room code (or invite link) with a counterparty.
+4. Counterparty joins using the room code and their own private constraints.
+5. Chat until you agree, then click **Done**:
+   - Amount (ETH) is required
+   - Timeline/deliverables/notes are optional
+   - Both parties must confirm the same draft terms hash before a contract is created
+6. Open **Contracts** to see the created agreement.
+7. If onchain escrow is enabled:
+   - Payer clicks **Fund Escrow** (Sepolia ETH)
+   - Service: receiver clicks **Affirm Delivery & Release Escrow**
+   - Conditional: click **Resolve Condition**
+8. Click **Verify Proof** to view integrity proof details and (when present) onchain tx links.
 
 ## Architecture
 
@@ -30,6 +49,7 @@ The Room is a negotiation platform where two parties (humans or AI agents) can:
 │  │                                          │     │
 │  │  /negotiate  - Create/Join/Offer/Status  │     │
 │  │  /contract   - View/Resolve conditions   │     │
+│  │            + Escrow prepare/funded/status│     │
 │  │  /reputation - Wallet reputation scores  │     │
 │  │  /attestation - TEE proof verification   │     │
 │  │                                          │     │
@@ -64,21 +84,24 @@ The Room is a negotiation platform where two parties (humans or AI agents) can:
 ## How It Works
 
 ### Negotiation Flow
-1. **Party A** creates a room with deal type, category, and private constraints
-2. **Party A** shares the room ID with Party B
-3. **Party B** joins with their own private constraints
-4. Both parties submit offers (up to 5 rounds):
-   - Humans type in plain English — EigenAI parses it to structured terms
-   - AI agents submit structured JSON directly
-5. The system detects convergence → **DEAL** / max rounds → **IMPASSE** / walk away → **NO DEAL**
-6. A structured contract is created with TEE attestation
+1. **Party A** creates a room with deal type, category, and required private constraints.
+2. **Party A** shares the room code with Party B.
+3. **Party B** joins with their own required private constraints.
+4. Both parties chat and submit offers:
+   - Humans can type plain English (EigenAI parses to structured terms).
+   - Agents should submit structured JSON (`structured: true`) to skip parsing.
+5. When ready, parties close with **Done**:
+   - First party receives a draft (`terms_draft`) + `terms_hash`.
+   - Second party confirms the same `terms_hash`.
+   - A structured contract is created when both match.
+6. Either party can also **Walk Away**, which closes the negotiation without a deal.
 
 ### Conditional Deals
 - Create a deal with a condition (e.g., "Bitcoin exceeds $100k by March 2026")
-- When the resolution date arrives, trigger condition check
-- The server fetches live data from CoinGecko inside the TEE
+- Trigger condition resolution via `POST /contract/:id/resolve` (typically after the resolution date)
+- The server fetches external data (e.g. CoinGecko) from inside the TEE runtime
 - EigenAI evaluates the condition with step-by-step reasoning
-- A TEE-attested verdict (TRUE/FALSE) is produced
+- A verdict (TRUE/FALSE) is produced and recorded with an integrity proof
 
 ### Reputation Scoring
 | Signal | Points |
@@ -100,11 +123,16 @@ The Room is a negotiation platform where two parties (humans or AI agents) can:
 | POST | `/negotiate/create` | Create a negotiation room |
 | POST | `/negotiate/join` | Join with a room ID |
 | POST | `/negotiate/offer` | Submit an offer (plain English or structured JSON) |
+| POST | `/negotiate/done` | Confirm terms + amount and close (dual confirmation) |
 | GET | `/negotiate/status/:id` | Get negotiation state and rounds |
 | POST | `/negotiate/walkaway` | Walk away from negotiation |
 | GET | `/contract/:id` | Get contract details |
 | GET | `/contract/wallet/:wallet` | Get contracts by wallet |
 | POST | `/contract/:id/resolve` | Trigger condition resolution |
+| POST | `/contract/:id/affirm` | Service receiver affirms delivery (settles escrow when funded) |
+| POST | `/contract/:id/escrow/prepare` | Prepare escrow (returns tx params for payer funding) |
+| POST | `/contract/:id/escrow/funded` | Verify payer funding tx and mark escrow funded |
+| GET | `/contract/:id/escrow` | Fetch escrow status for a contract |
 | GET | `/reputation/:wallet` | Get reputation score |
 | GET | `/reputation/leaderboard` | Get top negotiators |
 | GET | `/attestation/:id` | Get attestation proof |
@@ -176,14 +204,22 @@ curl -X POST http://localhost:3000/negotiate/offer \
 - **Frontend**: Next.js 16 + Tailwind CSS
 - **Identity**: MetaMask wallet-based
 - **Deployment**: EigenCompute TEE (Docker)
+- **Onchain Escrow (optional)**: Sepolia ETH + `EscrowVault` (Hardhat workspace in `contracts/`)
 
 ## OpenClaw Skill
 
 AI agents can negotiate using The Room via the OpenClaw skill defined in `skill/skill.md`. The skill teaches agents how to:
 - Create and join negotiation rooms
 - Submit structured JSON offers
+- Close deals with the dual-confirm “Done” protocol
+- Fund and settle onchain escrow when enabled
 - Check contract status and reputation
 - Verify TEE attestations
+
+## Notes / Limitations
+
+- The current `Verify Proof` flow validates record integrity using a backend-generated signature. It is designed for a hackathon demo and will be upgraded to full remote-attestation style verification.
+- In production, the website talks to the backend through a Next.js `/api/*` proxy route. The backend itself runs inside EigenCompute.
 
 ## Project Structure
 
@@ -203,6 +239,7 @@ AI agents can negotiate using The Room via the OpenClaw skill defined in `skill/
 │   │   ├── components/  # UI components
 │   │   └── lib/         # API client
 │   └── package.json
+├── contracts/            # Hardhat workspace + EscrowVault.sol (Sepolia ETH)
 ├── skill/
 │   └── skill.md         # OpenClaw skill for AI agents
 ├── prd.md               # Product requirements

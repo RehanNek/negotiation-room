@@ -1,4 +1,4 @@
-# The Room — Product Requirements Document
+# Negotiation Room (The Room) — Product Requirements Document
 
 ## Overview
 The Room is a verifiable negotiation infrastructure running on EigenCloud where agents and humans make private deals — including conditional contracts that auto-resolve — with provable fairness via TEE attestation.
@@ -9,13 +9,14 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 3. Provide verifiable fairness through TEE attestation
 4. Build reputation scores based on negotiation behavior
 5. Expose an OpenClaw skill so AI agents can negotiate programmatically
+6. Optionally settle deals via onchain escrow on Sepolia (ETH) without a middleman
 
 ## User Personas
 
 ### Human Negotiators (via Website)
 - Connect via MetaMask wallet
 - Type offers in plain English (AI parses to structured terms)
-- View round-by-round negotiation progress
+- Use a chat-style negotiation workspace
 - Check contract status and reputation
 
 ### AI Agents (via OpenClaw Skill / API)
@@ -26,11 +27,19 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 ## Functional Requirements
 
 ### Negotiation Protocol
-- Party A creates a room with category, parameters, and private constraints
-- Party B joins with a shared room ID and their own constraints
-- 3-5 rounds of offers, with convergence detection
-- Outcomes: DEAL, IMPASSE (max rounds), NO DEAL (walkaway)
-- Human offers parsed by EigenAI; agent offers submitted as structured JSON
+- Party A creates a room with category, parameters, and required private constraints.
+- Party B joins with a shared room code and their own required private constraints.
+- Parties exchange chat messages/offers (no fixed round limit in the user experience).
+- Closing is explicit and requires dual confirmation:
+  - First party confirms “Done” and receives `terms_draft` + `terms_hash`.
+  - Second party confirms “Done” with the same `terms_hash`.
+  - Contract is created only when both match.
+- Any new offer clears pending “Done” confirmations and requires re-confirmation.
+- Outcomes:
+  - `waiting` (created, awaiting counterparty)
+  - `active` (both parties present, negotiating)
+  - `deal` (contract created)
+  - `no_deal` (walkaway)
 
 ### Deal Types
 1. **Service Deals**: Standard negotiation producing a structured contract
@@ -40,17 +49,30 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 - Stores structured contract terms
 - For conditional deals: fetches external data (CoinGecko, news APIs) from inside TEE
 - EigenAI evaluates conditions with step-by-step reasoning
-- Produces attested verdict (TRUE / FALSE / PENDING)
+- Produces a verdict (TRUE / FALSE / PENDING) and records an integrity proof
 
 ### Reputation System
 - Per-wallet scoring based on negotiation behavior
 - Signals: deals reached, good faith offers, quick resolution, walkaway, lowballing, clean resolution, disputed verdicts
 - Reputation visible to other parties and factored into AI suggestions
 
+### Onchain Escrow (Optional, Sepolia ETH)
+- When escrow is enabled (env-config), contracts can be funded with real ETH on Sepolia.
+- Payer flow:
+  - `POST /contract/:id/escrow/prepare` returns tx params for `fundDeal(...)`.
+  - Payer sends the funding transaction via wallet (MetaMask).
+  - `POST /contract/:id/escrow/funded` verifies onchain logs and marks escrow as funded.
+- Settlement:
+  - Service contracts: receiver affirms delivery (`POST /contract/:id/affirm`) which triggers onchain settlement when escrow is funded.
+  - Conditional contracts: `POST /contract/:id/resolve` triggers condition evaluation and settlement when escrow is funded.
+- Timeout:
+  - Funded but unresolved escrows can be refunded after timeout.
+  - A scheduler retries settlement/refund attempts when enabled.
+
 ### TEE Attestation
-- All negotiation logic runs inside EigenCompute TEE
-- Attestation proofs generated for contract resolutions
-- Verifiable via public attestation endpoint
+- Negotiation, contract generation, and resolution logic run inside EigenCompute TEE.
+- Integrity proofs are generated for key state transitions (deal recorded, resolution, escrow actions).
+- Proofs are inspectable via the attestation endpoints and the Verify UI.
 
 ## API Specification
 See server/src/routes/ for full endpoint implementations.
@@ -62,7 +84,7 @@ See server/src/routes/ for full endpoint implementations.
 - Security: Wallet-based identity, no passwords
 
 ## Out of Scope
-- On-chain escrow (simulated for hackathon)
+- Full per-event remote-attestation quote verification in the Verify UI
 - Matchmaking / room discovery
 - Multi-party negotiations (2 parties only)
 - Automated dispute resolution beyond AI verdict
