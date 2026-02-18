@@ -6,6 +6,7 @@ import negotiateRoutes from './routes/negotiate';
 import contractRoutes from './routes/contract';
 import reputationRoutes from './routes/reputation';
 import attestationRoutes from './routes/attestation';
+import { isEscrowEnabled } from './services/escrow-config';
 import { errorMiddleware } from './routes/utils';
 
 export async function createApp() {
@@ -17,7 +18,12 @@ export async function createApp() {
   app.use(express.json());
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'the-room', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      service: 'the-room',
+      timestamp: new Date().toISOString(),
+      escrow_enabled: isEscrowEnabled(),
+    });
   });
 
   app.use('/auth', authRoutes);

@@ -16,6 +16,7 @@ function ContractsWorkspace() {
   const [wallet, setWallet] = useState<string | null>(null);
   const [contracts, setContracts] = useState<ContractViewModel[]>([]);
   const [loading, setLoading] = useState(false);
+  const [escrowEnabled, setEscrowEnabled] = useState<boolean | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [affirmingId, setAffirmingId] = useState<string | null>(null);
   const [fundingEscrowId, setFundingEscrowId] = useState<string | null>(null);
@@ -50,6 +51,16 @@ function ContractsWorkspace() {
   useEffect(() => {
     void loadContracts();
   }, [loadContracts]);
+
+  useEffect(() => {
+    api.health()
+      .then((status) => {
+        setEscrowEnabled(status.escrow_enabled ?? null);
+      })
+      .catch(() => {
+        setEscrowEnabled(null);
+      });
+  }, []);
 
   useEffect(() => {
     setDealRetryCount(0);
@@ -193,6 +204,14 @@ function ContractsWorkspace() {
           </InfoCallout>
         ) : null}
 
+        {escrowEnabled === false ? (
+          <InfoCallout
+            title="Onchain escrow is disabled"
+            description="This backend is not configured to prepare or fund onchain escrow yet. Escrow actions will be hidden until it is enabled."
+            tone="warning"
+          />
+        ) : null}
+
         {error ? <InfoCallout title="Contract queue warning" description={error} tone="danger" /> : null}
       </section>
 
@@ -225,6 +244,7 @@ function ContractsWorkspace() {
                     contract={contract}
                     highlighted={focus === contract.id}
                     walletAddress={wallet}
+                    escrowEnabled={escrowEnabled}
                     onResolve={handleResolve}
                     onFundEscrow={handleFundEscrow}
                     resolving={resolvingId === contract.id}
@@ -245,6 +265,7 @@ function ContractsWorkspace() {
                     contract={contract}
                     highlighted={focus === contract.id}
                     walletAddress={wallet}
+                    escrowEnabled={escrowEnabled}
                     onAffirmService={handleAffirmService}
                     affirming={affirmingId === contract.id}
                     onFundEscrow={handleFundEscrow}
@@ -265,6 +286,7 @@ function ContractsWorkspace() {
                     contract={contract}
                     highlighted={focus === contract.id}
                     walletAddress={wallet}
+                    escrowEnabled={escrowEnabled}
                     onFundEscrow={handleFundEscrow}
                     fundingEscrow={fundingEscrowId === contract.id}
                   />

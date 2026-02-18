@@ -49,6 +49,12 @@ function normalizeEscrowAmountEthInput(value: string): { amountEth: string; amou
   };
 }
 
+function normalizeAgreementField(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function extractEscrowAmountWei(terms: Record<string, any>): bigint | null {
   const agreed = terms.agreed_terms && typeof terms.agreed_terms === 'object' && !Array.isArray(terms.agreed_terms)
     ? (terms.agreed_terms as Record<string, any>)
@@ -93,20 +99,31 @@ function extractEscrowAmountWei(terms: Record<string, any>): bigint | null {
   return null;
 }
 
-function applyEscrowAmountToTerms(terms: Record<string, any>, amountEth: string, amountWei: string): Record<string, any> {
+function applyAgreementToTerms(
+  terms: Record<string, any>,
+  agreement: { amountEth: string; amountWei: string; timeline?: string; deliverables?: string; notes?: string }
+): Record<string, any> {
   const next: Record<string, any> = { ...terms };
-  const agreedSource = next.agreed_terms && typeof next.agreed_terms === 'object' && !Array.isArray(next.agreed_terms)
-    ? (next.agreed_terms as Record<string, any>)
+
+  delete next.escrow_eth;
+  delete next.escrow_amount_eth;
+  delete next.escrow_amount_wei;
+
+  next.amount_wei = agreement.amountWei;
+
+  const agreementSource = next.agreement && typeof next.agreement === 'object' && !Array.isArray(next.agreement)
+    ? (next.agreement as Record<string, any>)
     : {};
 
-  next.agreed_terms = {
-    ...agreedSource,
-    escrow_eth: amountEth,
-    amount_wei: amountWei,
+  const nextAgreement: Record<string, any> = {
+    ...agreementSource,
+    amount_eth: agreement.amountEth,
   };
+  if (agreement.timeline) nextAgreement.timeline = agreement.timeline;
+  if (agreement.deliverables) nextAgreement.deliverables = agreement.deliverables;
+  if (agreement.notes) nextAgreement.notes = agreement.notes;
+  next.agreement = nextAgreement;
 
-  next.escrow_eth = amountEth;
-  next.amount_wei = amountWei;
   return next;
 }
 
@@ -288,7 +305,8 @@ export async function finalizeNegotiationDeal(
   negotiationId: string,
   walletAddress: string,
   providedTermsHash?: string,
-  providedEscrowAmountEth?: string
+  providedEscrowAmountEth?: string,
+  agreementInput?: { timeline?: string; deliverables?: string; notes?: string }
 ): Promise<FinalizeNegotiationResult> {
   const neg = get('SELECT * FROM negotiations WHERE id = ?', [negotiationId]);
   if (!neg) throw notFound('Negotiation not found');
@@ -296,6 +314,13 @@ export async function finalizeNegotiationDeal(
     throw forbidden('You are not a participant in this negotiation');
   }
   const confirmedEscrow = normalizeEscrowAmountEthInput(providedEscrowAmountEth || '');
+  const agreement = {
+    amountEth: confirmedEscrow.amountEth,
+    amountWei: confirmedEscrow.amountWei,
+    timeline: normalizeAgreementField(agreementInput?.timeline),
+    deliverables: normalizeAgreementField(agreementInput?.deliverables),
+    notes: normalizeAgreementField(agreementInput?.notes),
+  };
 
   if (neg.status === 'waiting') {
     throw conflict('Counterparty has not joined this negotiation');
@@ -370,7 +395,7 @@ export async function finalizeNegotiationDeal(
     );
   }
 
-  termsDraft = applyEscrowAmountToTerms(termsDraft, confirmedEscrow.amountEth, confirmedEscrow.amountWei);
+  termsDraft = applyAgreementToTerms(termsDraft, agreement);
   const recomputedTermsHash = computeTermsHash(termsDraft);
   if (!termsHash || termsHash !== recomputedTermsHash) {
     termsHash = recomputedTermsHash;

@@ -225,6 +225,9 @@ export interface CompleteNegotiationPayload {
   negotiation_id: string;
   terms_hash?: string;
   escrow_amount_eth: string;
+  timeline?: string;
+  deliverables?: string;
+  notes?: string;
   wallet_address?: string;
 }
 

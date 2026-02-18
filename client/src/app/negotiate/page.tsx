@@ -11,21 +11,25 @@ import { canAdvanceFromSetup, resolveInitialStep, resolveStepAfterPath } from '@
 import type { DealType } from '@/lib/types';
 
 const FLOW_STEPS = [
-  { id: 'identity', label: 'Identity', description: 'Establish authenticated session.' },
-  { id: 'path', label: 'Path', description: 'Choose create or join flow.' },
-  { id: 'setup', label: 'Setup', description: 'Define private constraints and shared rules.' },
-  { id: 'live', label: 'Live Room', description: 'Reach agreement without a middleman.' },
+  { id: 'identity', label: 'Identity', description: 'Connect a wallet and start a session.' },
+  { id: 'path', label: 'Room', description: 'Create a new room or join an invite.' },
+  { id: 'setup', label: 'Private Inputs', description: 'Add your private constraints (required).' },
+  { id: 'live', label: 'Chat', description: 'Negotiate privately and confirm terms.' },
 ] as const;
 
 type WizardStep = (typeof FLOW_STEPS)[number]['id'];
 type NegotiationPath = 'create_custom' | 'join_existing';
 
-function parseOptionalConstraints(rawText: string): Record<string, unknown> {
-  if (!rawText.trim()) return {};
+function parseConstraints(rawText: string): Record<string, unknown> {
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    throw new Error('Private constraints are required. Add at least one sentence (or JSON).');
+  }
+
   try {
-    return JSON.parse(rawText) as Record<string, unknown>;
+    return JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
-    return { note: rawText.trim() };
+    return { note: trimmed };
   }
 }
 
@@ -61,10 +65,10 @@ function NegotiateWorkspace() {
 
   const hasSetupInputs = useMemo(() => {
     if (!path) return false;
-    if (path === 'create_custom') return category.trim().length > 0;
-    if (path === 'join_existing') return joinRoomId.trim().length > 0;
+    if (path === 'create_custom') return category.trim().length > 0 && constraints.trim().length > 0;
+    if (path === 'join_existing') return joinRoomId.trim().length > 0 && joinConstraints.trim().length > 0;
     return true;
-  }, [category, joinRoomId, path]);
+  }, [category, constraints, joinConstraints, joinRoomId, path]);
 
   const handleConnect = useCallback((address: string) => {
     const normalized = address || null;
@@ -95,7 +99,7 @@ function NegotiateWorkspace() {
     }
 
     if (!canAdvanceFromSetup(path || 'create_custom', hasSetupInputs)) {
-      setError('Category is required for new room creation.');
+      setError('Category and private constraints are required for new room creation.');
       return;
     }
 
@@ -105,7 +109,7 @@ function NegotiateWorkspace() {
 
     try {
       const params: Record<string, unknown> = {};
-      const privateInputs = parseOptionalConstraints(constraints);
+      const privateInputs = parseConstraints(constraints);
       if (dealType === 'conditional') {
         params.condition = condition || 'Bitcoin closes above 100000 USD by the resolution date.';
         params.data_source = dataSource;
@@ -137,7 +141,7 @@ function NegotiateWorkspace() {
     }
 
     if (!canAdvanceFromSetup(path || 'join_existing', hasSetupInputs)) {
-      setError('Room ID is required.');
+      setError('Room ID and private constraints are required.');
       return;
     }
 
@@ -147,7 +151,7 @@ function NegotiateWorkspace() {
 
     try {
       const roomId = joinRoomId.trim();
-      const privateInputs = parseOptionalConstraints(joinConstraints);
+      const privateInputs = parseConstraints(joinConstraints);
       await api.joinNegotiation({
         room_id: roomId,
         constraints: privateInputs,
@@ -212,7 +216,7 @@ function NegotiateWorkspace() {
         <div>
           <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Negotiation Workspace</h1>
           <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-            Define private constraints, negotiate directly with the counterparty, and produce verifiable deal records through EigenCloud TEE.
+            Create a private room, negotiate directly with the counterparty, and record verifiable deal proof.
           </p>
         </div>
 
@@ -239,7 +243,7 @@ function NegotiateWorkspace() {
           {roomFromQuery ? (
             <InfoCallout
               title="Invitation detected"
-              description={`Join code ${roomFromQuery} is ready. Select "Join Existing Room" to continue.`}
+              description={`A room code was detected: ${roomFromQuery}. Choose "Join Existing Room" to enter.`}
               tone="info"
             />
           ) : null}
@@ -248,17 +252,17 @@ function NegotiateWorkspace() {
             <article className="card space-y-4 p-5 md:p-6">
               <h3 className="font-display text-2xl text-[var(--ink)]">Create New Room</h3>
               <p className="text-sm text-[var(--muted-ink)]">
-                Set the agreement rules and private constraints for a direct, middleman-free negotiation.
+                Start a private room and share the invite with someone you want to negotiate with.
               </p>
               <button className="button-secondary w-full justify-center" type="button" onClick={() => selectPath('create_custom')}>
-                Configure New Room
+                Create New Room
               </button>
             </article>
 
             <article className="card space-y-4 p-5 md:p-6">
               <h3 className="font-display text-2xl text-[var(--ink)]">Join Existing Room</h3>
               <p className="text-sm text-[var(--muted-ink)]">
-                Join by room code and negotiate with private inputs while rule execution remains verifiable.
+                Enter a room code from an invite and start negotiating.
               </p>
               <button className="button-secondary w-full justify-center" type="button" onClick={() => selectPath('join_existing')}>
                 Enter Room Code
@@ -273,7 +277,7 @@ function NegotiateWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Configure New Room</h2>
             <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
-              Back To Path Selection
+              Back To Room Choice
             </button>
           </div>
 
@@ -329,13 +333,13 @@ function NegotiateWorkspace() {
             ) : null}
 
             <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (JSON or plain text)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (required)</span>
               <textarea
                 value={constraints}
                 onChange={(event) => setConstraints(event.target.value)}
                 rows={3}
                 className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
-                placeholder='{"max_price": 500, "deadline": "2026-03-01"}'
+                placeholder='Only you can see this. Example: {"max_price_usd": 500, "deadline": "2026-03-01"} or "I will not pay more than $500."'
               />
             </label>
           </div>
@@ -345,7 +349,7 @@ function NegotiateWorkspace() {
               {working ? 'Creating Room...' : 'Create And Enter Room'}
             </button>
             <button type="button" className="button-secondary" onClick={() => setStep('path')}>
-              Choose Different Path
+              Change Room Choice
             </button>
           </div>
         </section>
@@ -356,7 +360,7 @@ function NegotiateWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Join Room</h2>
             <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
-              Back To Path Selection
+              Back To Room Choice
             </button>
           </div>
 
@@ -371,13 +375,13 @@ function NegotiateWorkspace() {
           </label>
 
           <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (optional)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (required)</span>
             <textarea
               value={joinConstraints}
               onChange={(event) => setJoinConstraints(event.target.value)}
               rows={3}
               className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
-              placeholder='{"min_price": 200}'
+              placeholder='Only you can see this. Example: {"target_price_usd": 250} or "I can do this in 5 days."'
             />
           </label>
 
@@ -386,7 +390,7 @@ function NegotiateWorkspace() {
               {working ? 'Joining...' : 'Join And Enter Room'}
             </button>
             <button type="button" className="button-secondary" onClick={() => setStep('path')}>
-              Choose Different Path
+              Change Room Choice
             </button>
           </div>
         </section>

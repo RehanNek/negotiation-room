@@ -18,6 +18,7 @@ interface ContractQueueCardProps {
   contract: ContractViewModel;
   highlighted?: boolean;
   walletAddress?: string | null;
+  escrowEnabled?: boolean | null;
   onResolve?: (id: string) => void;
   onAffirmService?: (id: string) => void;
   onFundEscrow?: (id: string) => void;
@@ -28,7 +29,10 @@ interface ContractQueueCardProps {
 
 const EXPLORER_TX_BASE = process.env.NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL || 'https://sepolia.etherscan.io/tx/';
 
-function escrowStatusCopy(status?: EscrowStatus): string {
+function escrowStatusCopy(status?: EscrowStatus, escrowEnabled?: boolean | null): string {
+  if (escrowEnabled === false) {
+    return 'Onchain escrow is not enabled on this backend.';
+  }
   switch (status) {
     case 'awaiting_funding':
       return 'Awaiting payer funding onchain.';
@@ -103,6 +107,7 @@ export default function ContractQueueCard({
   contract,
   highlighted = false,
   walletAddress,
+  escrowEnabled = null,
   onResolve,
   onAffirmService,
   onFundEscrow,
@@ -146,6 +151,7 @@ export default function ContractQueueCard({
   ) || contract.party_a_wallet;
   const payerCanFundEscrow = Boolean(
     onFundEscrow &&
+      escrowEnabled !== false &&
       normalizedWallet &&
       payerWallet &&
       normalizedWallet === payerWallet.toLowerCase() &&
@@ -206,7 +212,7 @@ export default function ContractQueueCard({
 
       <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Escrow Status</p>
-        <p className="mt-1 text-sm text-[var(--ink)]">{escrowStatusCopy(escrow?.status)}</p>
+        <p className="mt-1 text-sm text-[var(--ink)]">{escrowStatusCopy(escrow?.status, escrowEnabled)}</p>
         <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
           <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
             Payer: <span className="font-mono text-[var(--ink)]">{formatWallet(payerWallet)}</span>

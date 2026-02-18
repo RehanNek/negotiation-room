@@ -17,6 +17,7 @@ import { all, get, run, flushDb } from '../db';
 import { createAttestation } from './attestation';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
 import { computeDealHash, computeTermsHash } from './terms';
+import { isEscrowEnabled } from './escrow-config';
 import type {
   ConditionVerdict,
   Escrow,
@@ -44,6 +45,8 @@ function envInt(key: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+export { isEscrowEnabled } from './escrow-config';
+
 function normalizeWallet(wallet: unknown): string | null {
   if (typeof wallet !== 'string') return null;
   const trimmed = wallet.trim();
@@ -53,10 +56,6 @@ function normalizeWallet(wallet: unknown): string | null {
 
 function isEscrowAddress(value: string): value is `0x${string}` {
   return isAddress(value);
-}
-
-export function isEscrowEnabled(): boolean {
-  return (process.env.ESCROW_ENABLED || 'false').toLowerCase() === 'true';
 }
 
 function requireEscrowEnabled(): void {
