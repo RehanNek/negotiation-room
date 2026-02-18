@@ -541,12 +541,18 @@ export async function markEscrowFunded(contractId: string, txHash: string, reque
       ? get('SELECT data_hash FROM attestations WHERE id = ?', [contract.attestation_id])
       : null;
 
-    await tryAutoSettleEscrow(
+    // Settlement can take >10s due to block times and should not block the HTTP request (Vercel proxy timeout).
+    tryAutoSettleEscrow(
       contractId,
       verdict,
       contract.attestation_id ? String(contract.attestation_id) : null,
       contractAttestation?.data_hash ? `0x${String(contractAttestation.data_hash)}` : null
-    );
+    ).catch((error: unknown) => {
+      console.error('Auto-settle escrow failed after funding mark', {
+        contractId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 
   return {
@@ -661,7 +667,8 @@ export async function tryAutoSettleEscrow(
     });
   } catch (error: unknown) {
     run(
-      `UPDATE escrows SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
+      // Keep status as 'funded' because funds are still locked onchain; record the error and retry later.
+      `UPDATE escrows SET status = 'funded', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
       [error instanceof Error ? error.message : String(error), contractId]
     );
     flushDb();
@@ -735,7 +742,8 @@ async function schedulerTick(): Promise<void> {
         await refundEscrowOnchain(escrow);
       } catch (error: unknown) {
         run(
-          `UPDATE escrows SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
+          // Funds are still locked; leave status as funded and capture the failure for retry/debugging.
+          `UPDATE escrows SET status = 'funded', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
           [error instanceof Error ? error.message : String(error), escrow.contract_id]
         );
         flushDb();

@@ -49,6 +49,10 @@
 - [x] GET /contract/:id/escrow (2026-02-18)
 - [x] Auto-relay settlement when service affirmed / condition resolved (2026-02-18)
 - [x] Scheduler for retries + timeout refunds when enabled (2026-02-18)
+- [x] Funding UX now waits for tx confirmation before marking funded and showing tx hash (2026-02-18)
+- [x] Contracts UI no longer keeps Fund Escrow CTA active after funding is recorded (2026-02-18)
+- [x] Release flow now surfaces settlement status + settlement/refund tx hash (2026-02-18)
+- [x] Relay/refund errors keep escrow status `funded` with `last_error` for retry/debugging (2026-02-18)
 
 ## Phase 5: OpenClaw Skill
 - [x] skill/skill.md written with full API docs (2026-02-15)
@@ -69,6 +73,7 @@
 - [x] TEE attestation verified on live deployment (2026-02-16)
 - [x] Website deployed — https://the-room-smoky.vercel.app (2026-02-16)
 - [x] Backend redeploys include escrow + UI-linked flows (2026-02-18)
+- [x] Live Sepolia E2E flow validated (fund + release) with tx hashes captured (2026-02-18)
 
 ## Phase 8: Polish + Submit
 - [ ] Edge cases handled (timeouts, errors, disconnection)

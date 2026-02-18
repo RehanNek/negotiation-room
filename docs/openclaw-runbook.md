@@ -124,7 +124,7 @@ If `ESCROW_ENABLED=false`, API returns a conflict by design.
 When enabled:
 
 - Use returned `fund_tx.to`, `fund_tx.value_wei`, `fund_tx.data` to send payer tx on Sepolia.
-- Then mark funded:
+- Wait for tx confirmation, then call `/escrow/funded`:
 
 ```bash
 curl -s -X POST "$BASE/contract/$CONTRACT_ID/escrow/funded" \
@@ -140,6 +140,12 @@ curl -s "$BASE/contract/$CONTRACT_ID/escrow" \
   -H "Authorization: Bearer $TOKEN_A"
 ```
 
+Expected after successful funding:
+
+- `status: funded`
+- `fund_tx_hash` populated
+- Fund action should not be repeated once funding is recorded
+
 ## 7) Resolve Outcome
 
 Service flow:
@@ -150,7 +156,15 @@ Conditional flow:
 
 - Call `POST /contract/:id/resolve`.
 
-If escrow is funded, backend auto-relays settlement/refund tx.
+If escrow is funded, backend auto-relays settlement/refund tx asynchronously.
+
+After `affirm` or `resolve`, poll `/contract/:id/escrow` until status becomes:
+
+- `released` (service confirmed / TRUE verdict), or
+- `refunded` (FALSE verdict or timeout path)
+
+Read tx hash from `settle_tx_hash` (or `refund_tx_hash` for timeout refunds).
+If status remains `funded` and `last_error` is set, relay hit an error and retry is handled by scheduler ticks.
 
 ## 8) Verify
 

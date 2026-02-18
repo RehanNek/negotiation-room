@@ -149,13 +149,14 @@ export default function ContractQueueCard({
     [agreedTerms.payer_wallet, agreedTerms.client_wallet, agreedTerms.buyer_wallet, agreedTerms.requester_wallet, termsRecord.payer_wallet, contract.party_a_wallet]
       .find((value) => typeof value === 'string' && value.trim()) as string | undefined
   ) || contract.party_a_wallet;
+  const escrowNeedsFunding = Boolean(!escrow || escrow.status === 'awaiting_funding' || (escrow.status === 'failed' && !escrow.fund_tx_hash));
   const payerCanFundEscrow = Boolean(
     onFundEscrow &&
       escrowEnabled !== false &&
       normalizedWallet &&
       payerWallet &&
       normalizedWallet === payerWallet.toLowerCase() &&
-      (!escrow || escrow.status === 'awaiting_funding' || escrow.status === 'failed')
+      escrowNeedsFunding
   );
   const escrowFundingCta = !escrow ? 'Prepare & Fund Escrow' : escrow.status === 'failed' ? 'Retry Escrow Funding' : 'Fund Escrow';
   const settlementTxHash = escrow?.settle_tx_hash || escrow?.refund_tx_hash;

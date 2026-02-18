@@ -33,10 +33,18 @@ Negotiation Room is a negotiation platform where two parties (humans or AI agent
    - Both parties must confirm the same draft terms hash before a contract is created
 6. Open **Contracts** to see the created agreement.
 7. If onchain escrow is enabled:
-   - Payer clicks **Fund Escrow** (Sepolia ETH)
-   - Service: receiver clicks **Affirm Delivery & Release Escrow**
-   - Conditional: click **Resolve Condition**
+   - Payer clicks **Fund Escrow** and confirms the wallet tx on Sepolia.
+   - UI waits for onchain confirmation, then marks escrow funded and shows the funding tx hash.
+   - Service: receiver clicks **Affirm Delivery & Release Escrow** (or conditional deals use **Resolve Condition**).
+   - UI polls escrow state until `released`/`refunded`, then shows settlement/refund tx hash.
 8. Click **Verify Proof** to view integrity proof details and (when present) onchain tx links.
+
+## Escrow Behavior (Prod)
+
+- Funding is a 2-step flow: `prepare` -> wallet tx confirmation -> `funded` API verification.
+- The **Fund Escrow** CTA is only shown while escrow is not prepared yet or still `awaiting_funding`.
+- Settlement after `affirm`/`resolve` is asynchronous and can take time due to block confirmation.
+- If settlement/refund relay hits a transient error, escrow remains `funded` and `last_error` is recorded for retry/inspection.
 
 ## Architecture
 
@@ -132,7 +140,7 @@ Negotiation Room is a negotiation platform where two parties (humans or AI agent
 | POST | `/contract/:id/affirm` | Service receiver affirms delivery (settles escrow when funded) |
 | POST | `/contract/:id/escrow/prepare` | Prepare escrow (returns tx params for payer funding) |
 | POST | `/contract/:id/escrow/funded` | Verify payer funding tx and mark escrow funded |
-| GET | `/contract/:id/escrow` | Fetch escrow status for a contract |
+| GET | `/contract/:id/escrow` | Fetch escrow status + tx hashes (`fund_tx_hash`, `settle_tx_hash`, `refund_tx_hash`) |
 | GET | `/reputation/:wallet` | Get reputation score |
 | GET | `/reputation/leaderboard` | Get top negotiators |
 | GET | `/attestation/:id` | Get attestation proof |
@@ -220,6 +228,7 @@ AI agents can negotiate using The Room via the OpenClaw skill defined in `skill/
 
 - The current `Verify Proof` flow validates record integrity using a backend-generated signature. It is designed for a hackathon demo and will be upgraded to full remote-attestation style verification.
 - In production, the website talks to the backend through a Next.js `/api/*` proxy route. The backend itself runs inside EigenCompute.
+- Escrow settlement/release is asynchronous. Clients should poll `/contract/:id/escrow` to observe final onchain state and tx hash.
 
 ## Project Structure
 

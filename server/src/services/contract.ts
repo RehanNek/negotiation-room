@@ -222,12 +222,18 @@ export async function resolveCondition(contractId: string, requesterWallet?: str
     [verdict, evaluation.reasoning, attestation.id, contractId]
   );
   flushDb();
-  await tryAutoSettleEscrow(
+  // Settlement can take >10s due to block times and should not block the HTTP request (Vercel proxy timeout).
+  tryAutoSettleEscrow(
     contractId,
     verdict,
     attestation.id,
     (`0x${attestation.data_hash}` as `0x${string}`)
-  );
+  ).catch((error: unknown) => {
+    console.error('Auto-settle escrow failed after condition resolution', {
+      contractId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return {
     contract_id: contractId,
@@ -296,12 +302,18 @@ export async function affirmServiceDelivery(contractId: string, requesterWallet?
     [reasoning, attestation.id, contractId]
   );
   flushDb();
-  await tryAutoSettleEscrow(
+  // Settlement can take >10s due to block times and should not block the HTTP request (Vercel proxy timeout).
+  tryAutoSettleEscrow(
     contractId,
     'TRUE',
     attestation.id,
     (`0x${attestation.data_hash}` as `0x${string}`)
-  );
+  ).catch((error: unknown) => {
+    console.error('Auto-settle escrow failed after service affirmation', {
+      contractId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   return {
     contract_id: contractId,

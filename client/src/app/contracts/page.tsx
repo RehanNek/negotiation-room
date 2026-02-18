@@ -9,7 +9,65 @@ import InfoCallout from '@/components/InfoCallout';
 import WalletConnect from '@/components/WalletConnect';
 import { api } from '@/lib/api';
 import { parseContractFocus } from '@/lib/flow';
+import { formatWallet } from '@/lib/formatters';
+import type { Tone } from '@/lib/status';
 import type { ContractViewModel } from '@/lib/types';
+
+const EXPLORER_TX_BASE = process.env.NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL || 'https://sepolia.etherscan.io/tx/';
+
+type EthereumProvider = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+function getEthereumProvider(): EthereumProvider | null {
+  if (typeof window === 'undefined') return null;
+  const candidate = (window as Window & { ethereum?: unknown }).ethereum as { request?: unknown } | undefined;
+  if (!candidate || typeof candidate.request !== 'function') return null;
+  return candidate as EthereumProvider;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureChain(provider: EthereumProvider, expectedChainId: number): Promise<void> {
+  const expectedHex = `0x${expectedChainId.toString(16)}`.toLowerCase();
+  const current = await provider.request({ method: 'eth_chainId' });
+  const currentHex = typeof current === 'string' ? current.toLowerCase() : '';
+  if (currentHex === expectedHex) return;
+
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: expectedHex }] });
+  } catch (err: unknown) {
+    throw new Error(
+      `MetaMask is connected to ${currentHex || 'an unknown chain'}. Switch to chain ${expectedChainId} (${expectedHex}) and try again.`
+    );
+  }
+}
+
+async function waitForTransactionReceipt(provider: EthereumProvider, txHash: string, timeoutMs: number): Promise<void> {
+  const start = Date.now();
+  // Polling keeps each backend API call fast; we only call /escrow/funded once the tx is confirmed.
+  while (Date.now() - start < timeoutMs) {
+    const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+    if (receipt && typeof receipt === 'object') {
+      const status = (receipt as { status?: unknown }).status;
+      const blockNumber = (receipt as { blockNumber?: unknown }).blockNumber;
+      if (blockNumber) {
+        if (status === '0x0') throw new Error('Escrow funding transaction reverted onchain.');
+        return;
+      }
+    }
+    await sleep(2500);
+  }
+
+  throw new Error('Timed out waiting for the onchain transaction to confirm.');
+}
+
+type ActionNotice = {
+  tone: Tone;
+  title: string;
+  description: string;
+  txHash?: string;
+};
 
 function ContractsWorkspace() {
   const searchParams = useSearchParams();
@@ -20,6 +78,7 @@ function ContractsWorkspace() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [affirmingId, setAffirmingId] = useState<string | null>(null);
   const [fundingEscrowId, setFundingEscrowId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<ActionNotice | null>(null);
   const [error, setError] = useState('');
   const [dealRetryCount, setDealRetryCount] = useState(0);
 
@@ -27,6 +86,8 @@ function ContractsWorkspace() {
 
   const handleConnect = useCallback((address: string) => {
     setWallet(address || null);
+    setNotice(null);
+    setError('');
   }, []);
 
   const loadContracts = useCallback(async () => {
@@ -90,6 +151,7 @@ function ContractsWorkspace() {
   async function handleResolve(contractId: string) {
     setResolvingId(contractId);
     setError('');
+    setNotice(null);
     try {
       await api.resolveCondition(contractId);
       await loadContracts();
@@ -103,9 +165,83 @@ function ContractsWorkspace() {
   async function handleAffirmService(contractId: string) {
     setAffirmingId(contractId);
     setError('');
+    setNotice(null);
     try {
       await api.affirmServiceDelivery(contractId);
       await loadContracts();
+
+      // Escrow settlement is async (block times). Poll until we see it released/refunded (or detect a stop condition).
+      const startedAt = Date.now();
+      setNotice({
+        tone: 'info',
+        title: 'Work confirmed',
+        description: 'Escrow settlement is processing onchain. Waiting for a settlement transaction hash...',
+      });
+      let finished = false;
+      while (Date.now() - startedAt < 120000) {
+        await sleep(3500);
+        try {
+          const escrow = await api.getEscrow(contractId);
+          if (escrow.status === 'released' || escrow.status === 'refunded') {
+            const txHash = escrow.settle_tx_hash || escrow.refund_tx_hash || undefined;
+            setNotice({
+              tone: 'success',
+              title: 'Escrow settled onchain',
+              description: txHash
+                ? 'Settlement succeeded. Transaction hash below.'
+                : 'Settlement succeeded. Refresh the page if the tx hash is still loading.',
+              txHash,
+            });
+            await loadContracts();
+            finished = true;
+            break;
+          }
+          if (escrow.status === 'awaiting_funding') {
+            setNotice({
+              tone: 'warning',
+              title: 'Escrow not funded yet',
+              description: 'The payer still needs to fund escrow before onchain release can happen.',
+            });
+            finished = true;
+            break;
+          }
+          if (escrow.last_error && escrow.last_error.trim()) {
+            setNotice({
+              tone: 'warning',
+              title: 'Escrow settlement needs attention',
+              description: escrow.last_error,
+            });
+            await loadContracts();
+            finished = true;
+            break;
+          }
+          if (escrow.status === 'failed') {
+            const message = escrow.last_error || 'Escrow settlement failed.';
+            setNotice({ tone: 'danger', title: 'Escrow settlement failed', description: message });
+            await loadContracts();
+            finished = true;
+            break;
+          }
+          // funded/awaiting_funding: keep waiting
+        } catch {
+          // Escrow may not be prepared yet; stop polling.
+          setNotice({
+            tone: 'warning',
+            title: 'Escrow not prepared yet',
+            description: 'Prepare and fund escrow before attempting onchain release.',
+          });
+          finished = true;
+          break;
+        }
+      }
+
+      if (!finished) {
+        setNotice({
+          tone: 'info',
+          title: 'Escrow settlement pending',
+          description: 'Still waiting onchain. Refresh in a moment to see the settlement transaction hash.',
+        });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Affirmation failed');
     } finally {
@@ -121,14 +257,15 @@ function ContractsWorkspace() {
 
     setFundingEscrowId(contractId);
     setError('');
+    setNotice(null);
     try {
       const prepared = await api.prepareEscrow(contractId);
-      const provider = typeof window !== 'undefined'
-        ? (window as Window & { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum
-        : undefined;
+      const provider = getEthereumProvider();
       if (!provider) {
         throw new Error('MetaMask is required to send escrow funding transaction.');
       }
+
+      await ensureChain(provider, prepared.escrow.chain_id);
 
       const txHash = await provider.request({
         method: 'eth_sendTransaction',
@@ -146,7 +283,23 @@ function ContractsWorkspace() {
         throw new Error('Wallet did not return a valid transaction hash.');
       }
 
+      setNotice({
+        tone: 'success',
+        title: 'Escrow funding submitted',
+        description: 'Transaction submitted. Waiting for onchain confirmation...',
+        txHash,
+      });
+
+      // Wait for the tx to confirm before asking the backend to verify and mark it funded.
+      await waitForTransactionReceipt(provider, txHash, 180000);
+
       await api.markEscrowFunded(contractId, txHash);
+      setNotice({
+        tone: 'success',
+        title: 'Escrow funded',
+        description: 'Funding confirmed and recorded. The Fund Escrow button should disappear now.',
+        txHash,
+      });
       await loadContracts();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Escrow funding failed');
@@ -213,6 +366,24 @@ function ContractsWorkspace() {
         ) : null}
 
         {error ? <InfoCallout title="Contract queue warning" description={error} tone="danger" /> : null}
+        {notice ? (
+          <InfoCallout title={notice.title} description={notice.description} tone={notice.tone}>
+            {notice.txHash ? (
+              <p>
+                Tx:{' '}
+                <a
+                  className="font-mono underline decoration-dotted underline-offset-2"
+                  href={`${EXPLORER_TX_BASE}${notice.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={notice.txHash}
+                >
+                  {formatWallet(notice.txHash, 12, 10)}
+                </a>
+              </p>
+            ) : null}
+          </InfoCallout>
+        ) : null}
       </section>
 
       {!wallet ? (

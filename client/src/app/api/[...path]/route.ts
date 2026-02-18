@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://136.109.58.88:3000';
-const PROXY_TIMEOUT_MS = 12000;
+// Chain-related endpoints (escrow funding verification, condition resolution) can take >10s on slow RPCs.
+const PROXY_TIMEOUT_MS = 25000;
 const RETRY_DELAY_MS = 250;
 
 export const runtime = 'nodejs';
