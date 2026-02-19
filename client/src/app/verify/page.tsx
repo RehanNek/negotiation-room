@@ -184,18 +184,18 @@ function VerifyWorkspace() {
   const onchain = extractOnchainEvidence(result?.attestation?.payload);
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-5 md:space-y-7">
       <section className="card space-y-4 p-5 md:p-6">
         <div>
           <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Verify Proof</h1>
           <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-            Check that this contract record is authentic and has not been changed since it was created inside the secure environment.
+            Confirm this record is authentic and unchanged since it was created inside the secure environment.
           </p>
         </div>
 
         <InfoCallout
-          title="How to read this page"
-          description="If status is valid, the record is intact. Then review the linked contract id and outcome snapshot. Technical fields are optional and can be expanded when needed."
+          title="How to read this workspace"
+          description="If status is valid, integrity checks passed. Then review the linked contract id, outcome snapshot, and optional technical fields."
           tone="info"
         />
 
@@ -203,11 +203,11 @@ function VerifyWorkspace() {
           <input
             value={attestationId}
             onChange={(event) => setAttestationId(event.target.value)}
-            placeholder="Paste proof id or contract id"
+            placeholder="Paste attestation id or contract id"
             className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 font-mono text-sm text-[var(--ink)]"
           />
           <button className="button-primary" onClick={() => void verify()} disabled={loading || !attestationId.trim()} type="button">
-            {loading ? 'Checking...' : 'Check Proof'}
+            {loading ? 'Verifying...' : 'Verify Record'}
           </button>
         </div>
 
@@ -301,12 +301,12 @@ function VerifyWorkspace() {
 
           <div className="space-y-4">
             <InfoCallout
-              title="What this confirms"
+              title="What this verifies"
               description="Your browser recomputed the canonical payload hash and verified the EIP-712 signer locally."
               tone="success"
             />
             <InfoCallout
-              title="What this does not confirm"
+              title="Verification limits"
               description="This does not prove legal enforcement or real-world payment transfer by itself. It only proves record integrity."
               tone="warning"
             />

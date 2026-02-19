@@ -19,8 +19,8 @@ const TONE_CLASS: Record<Tone, string> = {
 export default function InfoCallout({ title, description, tone = 'neutral', children }: InfoCalloutProps) {
   return (
     <aside className={`rounded-2xl border p-4 md:p-5 ${TONE_CLASS[tone]}`}>
-      <h4 className="text-sm font-semibold text-[var(--ink)]">{title}</h4>
-      <p className="mt-1 text-sm text-[var(--muted-ink)]">{description}</p>
+      <h4 className="text-sm font-semibold tracking-[0.04em] text-[var(--ink)]">{title}</h4>
+      <p className="mt-1 text-sm leading-relaxed text-[var(--muted-ink)]">{description}</p>
       {children ? <div className="mt-3 text-sm">{children}</div> : null}
     </aside>
   );

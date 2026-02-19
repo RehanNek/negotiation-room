@@ -277,7 +277,7 @@ function NegotiateWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Configure New Room</h2>
             <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
-              Back To Room Choice
+              Back to room choice
             </button>
           </div>
 
@@ -346,10 +346,10 @@ function NegotiateWorkspace() {
 
           <div className="flex flex-wrap gap-2">
             <button type="button" className="button-primary" onClick={handleCreateCustom} disabled={working || !hasSetupInputs}>
-              {working ? 'Creating Room...' : 'Create And Enter Room'}
+              {working ? 'Creating room...' : 'Create and enter room'}
             </button>
             <button type="button" className="button-secondary" onClick={() => setStep('path')}>
-              Change Room Choice
+              Change room choice
             </button>
           </div>
         </section>
@@ -360,7 +360,7 @@ function NegotiateWorkspace() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-3xl text-[var(--ink)]">Step 3: Join Room</h2>
             <button className="button-ghost text-sm" type="button" onClick={() => setStep('path')}>
-              Back To Room Choice
+              Back to room choice
             </button>
           </div>
 
@@ -387,10 +387,10 @@ function NegotiateWorkspace() {
 
           <div className="flex flex-wrap gap-2">
             <button type="button" className="button-primary" onClick={handleJoinExisting} disabled={working || !hasSetupInputs}>
-              {working ? 'Joining...' : 'Join And Enter Room'}
+              {working ? 'Joining...' : 'Join and enter room'}
             </button>
             <button type="button" className="button-secondary" onClick={() => setStep('path')}>
-              Change Room Choice
+              Change room choice
             </button>
           </div>
         </section>
@@ -411,7 +411,7 @@ function NegotiateWorkspace() {
               }}
               className="button-ghost text-sm"
             >
-              Start New Negotiation
+              Start new negotiation
             </button>
           </div>
 

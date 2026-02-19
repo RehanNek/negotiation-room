@@ -370,7 +370,7 @@ function ContractsWorkspace() {
           >
             {verifyTarget ? (
               <Link href={`/verify?id=${verifyTarget}`} className="button-secondary text-xs">
-                Open Verify Page
+                Open Verify Workspace
               </Link>
             ) : (
               <p className="text-xs text-[var(--muted-ink)]">

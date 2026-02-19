@@ -64,14 +64,14 @@ export default function HomePage() {
           </ul>
           <div className="pt-2">
             <Link href="/verify" className="button-secondary">
-              Open Verification Workspace
+              Open Verify Workspace
             </Link>
           </div>
         </EvidencePanel>
 
         <article className="card relative p-5 md:p-6">
           <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent-gold)]/70 to-transparent" />
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-ink)]">No-Middleman Guarantee</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">No-Middleman Guarantee</h3>
           <ul className="mt-3 space-y-2 text-sm text-[var(--muted-ink)]">
             <li>• Any two parties can negotiate under shared rules.</li>
             <li>• Rule execution happens in EigenCloud TEE, not through manual arbitration.</li>

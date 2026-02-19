@@ -29,9 +29,21 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-sans), sans-serif;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   background:
     radial-gradient(120% 90% at 50% -20%, rgba(212, 175, 55, 0.11), transparent 58%),
     linear-gradient(165deg, #060606 0%, #0b0b0b 50%, #111111 100%);
+}
+
+a {
+  color: color-mix(in srgb, var(--accent-gold), #ffffff 8%);
+  transition: color 200ms ease-out;
+}
+
+a:hover {
+  color: color-mix(in srgb, var(--accent-gold-strong), #ffffff 12%);
 }
 
 .app-shell {
@@ -108,7 +120,12 @@ body {
   font-size: 0.88rem;
   font-weight: 600;
   line-height: 1;
-  transition: all 180ms ease-out;
+  transition:
+    border-color 210ms ease-out,
+    background-color 210ms ease-out,
+    color 210ms ease-out,
+    box-shadow 210ms ease-out,
+    transform 210ms ease-out;
 }
 
 .button-primary {
@@ -123,6 +140,12 @@ body {
   box-shadow:
     0 10px 20px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(245, 240, 235, 0.06);
+}
+
+.button-primary:active,
+.button-secondary:active,
+.button-ghost:active {
+  transform: translateY(0);
 }
 
 .button-primary:disabled {
@@ -201,5 +224,16 @@ code {
 @media (max-width: 768px) {
   .mission-header {
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

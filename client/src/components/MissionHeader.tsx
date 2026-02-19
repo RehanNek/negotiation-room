@@ -65,17 +65,17 @@ export default function MissionHeader() {
   }, [pathname]);
 
   return (
-    <header className="mission-header sticky top-0 z-40 border-b border-[var(--line)] bg-[color:var(--surface-1)]/88 backdrop-blur-md">
+    <header className="mission-header sticky top-0 z-40 border-b border-[var(--line)] bg-[color:var(--surface-1)]/90 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 md:px-8 md:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col">
             <Link
               href="/"
-              className="font-display text-3xl leading-none tracking-[0.08em] text-[var(--ink)] md:text-4xl lg:text-5xl"
+              className="font-display text-3xl leading-none tracking-[0.09em] text-[var(--ink)] md:text-4xl lg:text-5xl"
             >
               Negotiation Room
             </Link>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.22em] text-[var(--accent-gold)]">
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--accent-gold)]">
               Private. Verifiable. No middleman.
             </p>
           </div>
@@ -97,14 +97,14 @@ export default function MissionHeader() {
           </div>
         </div>
 
-        <nav className="flex flex-wrap items-center gap-1">
+        <nav className="flex flex-wrap items-center gap-1.5">
           {NAV_ITEMS.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition md:text-sm ${
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium tracking-[0.06em] transition md:text-sm ${
                   active
                     ? 'border-[var(--line-strong)] bg-[var(--surface-2)] text-[var(--ink)] shadow-[inset_0_-1px_0_0_var(--accent-gold)]'
                     : 'border-transparent text-[var(--muted-ink)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'

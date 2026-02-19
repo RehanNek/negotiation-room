@@ -16,7 +16,7 @@ const TONE_CLASS: Record<Tone, string> = {
 
 export default function StatusPill({ label, tone, pulse = false }: StatusPillProps) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${TONE_CLASS[tone]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${TONE_CLASS[tone]}`}>
       <span className={`inline-block h-1.5 w-1.5 rounded-full bg-current ${pulse ? 'animate-pulse' : ''}`} />
       {label}
     </span>
