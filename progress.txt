@@ -53,6 +53,9 @@
 - [x] Contracts UI no longer keeps Fund Escrow CTA active after funding is recorded (2026-02-18)
 - [x] Release flow now surfaces settlement status + settlement/refund tx hash (2026-02-18)
 - [x] Relay/refund errors keep escrow status `funded` with `last_error` for retry/debugging (2026-02-18)
+- [x] Service payer defaults hardened to service receiver wallet when explicit payer is missing (2026-02-19)
+- [x] Contract list polling added so Party A/Party B escrow status updates without manual refresh (2026-02-19)
+- [x] Contract card now shows explicit escrow routing: payer / release-to-provider / refund-to-payer (2026-02-19)
 
 ## Phase 5: OpenClaw Skill
 - [x] skill/skill.md written with full API docs (2026-02-15)
@@ -66,6 +69,9 @@
 - [x] Contracts page redesigned for clarity + focus/highlight handoff (2026-02-18)
 - [x] My Profile page (reputation, history) (2026-02-15)
 - [x] Verify page (paste attestation ID, see proof) (2026-02-15)
+- [x] Removed duplicate waiting-state bottom box in negotiation workspace (2026-02-19)
+- [x] Updated escrow-funded notice copy to remove repetitive line about hiding fund button (2026-02-19)
+- [x] Verify page now upgrades stale attestation links to the latest relevant contract/escrow proof (2026-02-19)
 
 ## Phase 7: Deployment
 - [x] Docker image builds and runs locally (2026-02-16)
@@ -74,6 +80,7 @@
 - [x] Website deployed — https://the-room-smoky.vercel.app (2026-02-16)
 - [x] Backend redeploys include escrow + UI-linked flows (2026-02-18)
 - [x] Live Sepolia E2E flow validated (fund + release) with tx hashes captured (2026-02-18)
+- [x] Latest runtime commits aligned in production: backend `2e8ca29`, frontend `45db45c` (2026-02-19)
 
 ## Phase 8: Polish + Submit
 - [ ] Edge cases handled (timeouts, errors, disconnection)

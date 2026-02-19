@@ -146,6 +146,12 @@ Expected after successful funding:
 - `fund_tx_hash` populated
 - Fund action should not be repeated once funding is recorded
 
+Service-role defaults:
+
+- For service contracts, payer defaults to the service receiver (client/buyer/requester).
+- `recipient_if_true_wallet` is the service provider.
+- `recipient_if_false_wallet` is the payer (refund path).
+
 ## 7) Resolve Outcome
 
 Service flow:
@@ -199,6 +205,10 @@ npm run verify:attestation -- ./attestation.json
 Optional browser verification page:
 
 `https://the-room-smoky.vercel.app/verify?id=<attestation_id>`
+
+Note:
+
+- Verify UI resolves stale attestation IDs by preferring the latest relevant contract/escrow attestation when available.
 
 ## 9) OpenClaw Agent Notes
 

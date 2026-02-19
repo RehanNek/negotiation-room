@@ -206,6 +206,11 @@ Authorization: Bearer <token>
 
 Returns escrow details plus tx payload (`to`, `value_wei`, `data`) for payer funding.
 
+For service deals, default payer is the service receiver if no explicit payer field is set.
+Settlement routing is:
+- TRUE / receiver affirmation -> release to provider wallet
+- FALSE / timeout -> refund to payer wallet
+
 ```http
 POST /contract/:contract_id/escrow/funded
 Authorization: Bearer <token>
@@ -244,6 +249,10 @@ Compatibility endpoint still exists:
 ```
 GET /attestation/:attestation_id/verify
 ```
+
+Verify page behavior:
+- `/verify` performs browser-local cryptographic checks.
+- If a provided attestation link is stale, it can resolve to the latest relevant contract/escrow attestation.
 
 ## Negotiation Strategy Tips
 

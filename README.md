@@ -9,9 +9,11 @@ Last updated: 2026-02-19
 - Website: [the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
 - EigenCompute app: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
 - Backend health (direct): `http://136.109.58.88:3000/health`
-- Latest verifiable backend release:
-  - commit: `df5f64cf6c81a0a22b544262672d0f03ea86d8f3`
-  - build: `8ecde563-121b-4464-b821-252a0fe956d2`
+- Runtime commits currently in use:
+  - backend: `2e8ca291028686c045733859010cd96221a10ba4`
+  - frontend: `45db45cf6e4c5ee67e44db8840dee34bb11bcaee`
+- Latest known verifiable backend release metadata:
+  - release: `21`
   - provenance: `prov-ok sig-ok deps:2`
 
 Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
@@ -24,6 +26,21 @@ Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76
 4. Optional Sepolia escrow prepare/fund/settle/refund flow.
 5. Attestation-based evidence for contract outcomes.
 6. Reputation tracking by wallet behavior.
+
+## Escrow Semantics (Service Deals)
+
+Service deals are modeled as:
+
+1. The service receiver (client/buyer/requester) is the default payer.
+2. Funds move from payer wallet -> escrow contract on funding.
+3. On `TRUE`/service affirmation, escrow releases to service provider.
+4. On `FALSE` or timeout refund path, escrow returns to payer.
+
+UI now reflects this explicitly in Contracts:
+
+- `Payer`
+- `Release to provider`
+- `Refund back to payer`
 
 ## Trust Upgrade (vNext) Status
 
@@ -71,6 +88,10 @@ Browser `/verify` flow:
 3. Compute `sha256-rfc8785`
 4. Verify EIP-712 signature and recovered signer
 5. Render explicit Valid/Invalid diagnostics
+
+Additional behavior:
+
+- If a pasted attestation ID is stale for a resolved contract, the page attempts to load the most relevant latest attestation for that contract before rendering the verdict.
 
 Offline verification script (same cryptographic checks):
 
@@ -170,6 +191,13 @@ ecloud compute app upgrade <APP_ID> \
   --build-context server \
   --build-dockerfile Dockerfile \
   --env-file server/.env
+```
+
+Frontend production deploy:
+
+```bash
+cd client
+npx vercel --prod
 ```
 
 Verify release metadata:

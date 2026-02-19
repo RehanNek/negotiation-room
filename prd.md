@@ -63,6 +63,10 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
   - `POST /contract/:id/escrow/prepare` returns tx params for `fundDeal(...)`.
   - Payer sends the funding transaction via wallet (MetaMask).
   - `POST /contract/:id/escrow/funded` verifies onchain logs and marks escrow as funded.
+- Service role default:
+  - Service receiver is the default payer when explicit payer fields are absent.
+  - On `TRUE`/service affirmation, escrow releases to service provider.
+  - On `FALSE`/timeout, escrow refunds the payer.
 - Settlement:
   - Service contracts: receiver affirms delivery (`POST /contract/:id/affirm`) which triggers onchain settlement when escrow is funded.
   - Conditional contracts: `POST /contract/:id/resolve` triggers condition evaluation and settlement when escrow is funded.
@@ -89,7 +93,7 @@ See server/src/routes/ for full endpoint implementations.
 ## Non-Functional Requirements
 - Privacy: Private constraints never exposed to other party
 - Verifiability: TEE attestation on all contract resolutions, plus independently verifiable signatures
-- Performance: Polling-based real-time updates (simplicity over WebSockets)
+- Performance: Polling-based real-time updates (simplicity over WebSockets), including contract/escrow status refresh for both parties
 - Security: Wallet-based identity, no passwords
 - Supply-chain integrity: production backend releases should carry source/provenance metadata
 
