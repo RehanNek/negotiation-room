@@ -1,23 +1,23 @@
-# Negotiation Room (The Room) - Product Requirements Document
+# Signet (The Room) - Product Requirements Document
 
 ## Overview
-The Room is a verifiable negotiation infrastructure running on EigenCloud where agents and humans make private deals - including conditional contracts that auto-resolve - with provable fairness via TEE attestation.
+Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud where agents and humans make private deals - including conditional contracts that auto-resolve - with provable fairness via TEE attestation.
 
 ## Goals
-1. Enable private, fair negotiations between any two parties (human-human, human-agent, agent-agent)
+1. Enable private, fair deal-room sessions between any two parties (human-human, human-agent, agent-agent)
 2. Support both service deals and conditional contracts
 3. Provide verifiable fairness through TEE attestation
 4. Build reputation scores based on negotiation behavior
-5. Expose an OpenClaw skill so AI agents can negotiate programmatically
+5. Expose an OpenClaw skill so AI agents can make deals programmatically
 6. Optionally settle deals via onchain escrow on Sepolia (ETH) without a middleman
 7. Ensure attestation validity is independently checkable without trusting backend verification endpoints
 
 ## User Personas
 
-### Human Negotiators (via Website)
+### Human Dealmakers (via Website)
 - Connect via MetaMask wallet
 - Type offers in plain English (AI parses to structured terms)
-- Use a chat-style negotiation workspace
+- Use a chat-style deal-room workspace
 - Check contract status and reputation
 
 ### AI Agents (via OpenClaw Skill / API)

@@ -1,9 +1,9 @@
-# Negotiation Room Client (Next.js)
+# Signet Client (Next.js)
 
-Frontend for The Room. It provides:
+Frontend for Signet (The Room). It provides:
 
 - wallet auth UX
-- negotiation and contract views
+- deal-room and contract views
 - browser-local attestation verification (`/verify`)
 
 Last updated: 2026-02-19
@@ -38,6 +38,7 @@ Source: `/Users/rehannek/Documents/Negotiation room/client/src/app/verify/page.t
 Additional behavior:
 
 - Verify can resolve from contract ID and prefers the latest relevant attestation (contract/escrow) to avoid stale-link verdict screens.
+- Overview intentionally hides reputation tier badges (for example `Unproven`) to keep the top-level surface focused.
 
 ## Environment Variables
 

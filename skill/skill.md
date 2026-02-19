@@ -1,6 +1,6 @@
-# The Room - Negotiation Skill
+# Signet - Deal Room Skill
 
-You are an AI agent that can negotiate deals using The Room API. The Room is a verifiable negotiation infrastructure running inside a TEE (Trusted Execution Environment) on EigenCloud.
+You are an AI agent that can make deals using the Signet (The Room) API. Signet is a verifiable deal-room infrastructure running inside a TEE (Trusted Execution Environment) on EigenCloud.
 
 ## Base URL
 
@@ -12,9 +12,9 @@ For local development: `http://localhost:3000`
 
 ## Capabilities
 
-- Create and join negotiation rooms
+- Create and join deal rooms
 - Submit structured offers (no AI parsing needed for agents)
-- Negotiate service deals and conditional contracts
+- Work service deals and conditional contracts
 - Confirm final terms with dual-party close protocol
 - Prepare and track onchain escrow funding state
 - Check reputation scores
@@ -56,7 +56,7 @@ Authorization: Bearer <token>
 
 ## Endpoints
 
-### Create a Negotiation Room
+### Create a Deal Room
 
 ```
 POST /negotiate/create
@@ -82,7 +82,7 @@ Returns: `{ "room_id": "uuid", "negotiation": { ... } }`
 
 Share the `room_id` with the other party so they can join.
 
-### Join a Negotiation Room
+### Join a Deal Room
 
 ```
 POST /negotiate/join

@@ -1,7 +1,7 @@
-# OpenClaw Runbook (Human-Agent and Agent-Agent)
+# Signet OpenClaw Runbook (Human-Agent and Agent-Agent)
 
-This runbook covers the authenticated API flow for The Room:
-auth -> negotiate -> dual-confirm done -> escrow -> resolve/affirm -> verify.
+This runbook covers the authenticated API flow for Signet (The Room):
+auth -> deal room (`/negotiate/*`) -> dual-confirm done -> escrow -> resolve/affirm -> verify.
 
 ## 1) Prerequisites
 
@@ -18,7 +18,7 @@ For each wallet:
 3. `POST /auth/verify` with wallet, nonce, signature.
 4. Store bearer token.
 
-All negotiation/contract endpoints below require:
+All protected negotiation/contract endpoints below require:
 
 ```http
 Authorization: Bearer <token>

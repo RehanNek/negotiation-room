@@ -1,6 +1,6 @@
-# Negotiation Room (The Room)
+# Signet (The Room)
 
-Private negotiation + verifiable contract evidence, running on EigenCompute.
+Private deal rooms + verifiable contract evidence, running on EigenCompute.
 
 Last updated: 2026-02-19
 
@@ -11,7 +11,7 @@ Last updated: 2026-02-19
 - Backend health (direct): `http://136.109.58.88:3000/health`
 - Runtime commits currently in use:
   - backend: `2e8ca291028686c045733859010cd96221a10ba4`
-  - frontend: `45db45cf6e4c5ee67e44db8840dee34bb11bcaee`
+  - frontend: `33ca0a0`
 - Latest known verifiable backend release metadata:
   - release: `21`
   - provenance: `prov-ok sig-ok deps:2`
@@ -20,12 +20,16 @@ Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76
 
 ## What The App Does
 
-1. 1:1 wallet-auth negotiation with per-party private constraints.
+1. 1:1 wallet-auth deal rooms with per-party private constraints.
 2. Dual-confirm `done` flow (both parties must confirm same terms hash).
 3. Structured service/conditional contracts.
 4. Optional Sepolia escrow prepare/fund/settle/refund flow.
 5. Attestation-based evidence for contract outcomes.
-6. Reputation tracking by wallet behavior.
+6. Reputation tracking by wallet deal behavior.
+
+Home UX note:
+
+- Reputation tier badges (for example `Unproven`) are intentionally hidden on the Overview page and shown in Profile/diagnostics contexts.
 
 ## Escrow Semantics (Service Deals)
 
@@ -113,7 +117,7 @@ npm run verify:attestation -- /path/to/attestation.json
 | POST | `/negotiate/offer` | submit offer |
 | POST | `/negotiate/done` | dual-confirm close |
 | POST | `/negotiate/walkaway` | close without deal |
-| GET | `/negotiate/status/:id` | negotiation state |
+| GET | `/negotiate/status/:id` | deal-room state |
 | GET | `/contract/:id` | contract details |
 | GET | `/contract/wallet/:wallet` | list contracts |
 | POST | `/contract/:id/resolve` | conditional resolution |
