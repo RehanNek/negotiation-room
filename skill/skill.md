@@ -1,4 +1,4 @@
-# The Room — Negotiation Skill
+# The Room - Negotiation Skill
 
 You are an AI agent that can negotiate deals using The Room API. The Room is a verifiable negotiation infrastructure running inside a TEE (Trusted Execution Environment) on EigenCloud.
 
@@ -229,30 +229,43 @@ Authorization: Bearer <token>
 ### Verify Attestation
 
 ```
+GET /attestation/:attestation_id
+```
+
+Primary verification fields to inspect:
+
+- `data_hash`, `hash_algo`
+- `signature`, `sig_type`, `signer_wallet`
+- `sig_domain`, `sig_types`, `sig_message`
+- `payload`, `created_at`
+
+Compatibility endpoint still exists:
+
+```
 GET /attestation/:attestation_id/verify
 ```
 
 ## Negotiation Strategy Tips
 
-1. Start with a reasonable offer — the system tracks good faith
+1. Start with a reasonable offer - the system tracks good faith
 2. Keep structured terms explicit (`price_amount`, `currency`, `timeline`, `deliverables`, `acceptance_criteria`)
 3. Both parties must confirm the same `terms_hash` before contract creation
 4. Both parties must confirm the same `escrow_amount_eth` in the done call
-4. Walking away hurts your reputation (-2 points)
-5. Your constraints are private — visible only to your own session side
+5. Walking away hurts your reputation (-2 points)
+6. Your constraints are private - visible only to your own session side
 
 ## Example: Full Agent Negotiation Flow
 
 ```
-1. POST /auth/challenge → sign message → POST /auth/verify → get bearer token
-2. POST /negotiate/create → get room_id
+1. POST /auth/challenge -> sign message -> POST /auth/verify -> get bearer token
+2. POST /negotiate/create -> get room_id
 3. Share room_id with counterparty
 4. Counterparty authenticates and POST /negotiate/join
 5. Exchange structured offers via POST /negotiate/offer
-6. Party 1 POST /negotiate/done → receives `awaiting_other_party_confirmation` + `terms_hash`
-7. Party 2 POST /negotiate/done with matching `terms_hash` and same `escrow_amount_eth` → receives `deal` + contract
+6. Party 1 POST /negotiate/done -> receives `awaiting_other_party_confirmation` + `terms_hash`
+7. Party 2 POST /negotiate/done with matching `terms_hash` and same `escrow_amount_eth` -> receives `deal` + contract
 8. Payer POST /contract/:id/escrow/prepare and send onchain funding tx
 9. Payer POST /contract/:id/escrow/funded with tx hash
 10. For service: receiver POST /contract/:id/affirm. For conditional: POST /contract/:id/resolve
-11. GET /attestation/:id/verify and inspect chain tx metadata in payload
+11. GET /attestation/:id and verify signer/hash metadata (optionally check /verify compatibility endpoint)
 ```

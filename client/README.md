@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Negotiation Room Client (Next.js)
 
-## Getting Started
+Frontend for The Room. It provides:
 
-First, run the development server:
+- wallet auth UX
+- negotiation and contract views
+- browser-local attestation verification (`/verify`)
+
+## Runtime API Routing
+
+The API client uses endpoint-aware routing:
+
+- `/auth/*` -> `/api/*` proxy (Vercel-compatible auth flow)
+- non-auth business routes -> `NEXT_PUBLIC_API_URL` when set
+- localhost/dev -> `http://localhost:3000` fallback
+
+Source: `/Users/rehannek/Documents/Negotiation room/client/src/lib/api.ts`.
+
+## Verification UX (Trust Model)
+
+`/verify` uses `GET /attestation/:id` as the source of truth and verifies locally in-browser:
+
+1. Canonicalize payload (RFC 8785 style via `json-canonicalize`)
+2. Compute `sha256-rfc8785` hash
+3. Recover and verify EIP-712 signer
+4. Render Valid/Invalid with signer/hash diagnostics
+
+Source: `/Users/rehannek/Documents/Negotiation room/client/src/app/verify/page.tsx`.
+
+## Environment Variables
+
+Create `.env.local` in this folder:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Recommended in production (Path A privacy routing)
+NEXT_PUBLIC_API_URL=https://<your-backend-domain>
+
+# Optional explorer link base used in Verify page
+NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL=https://sepolia.etherscan.io/tx/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Notes:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- If `NEXT_PUBLIC_API_URL` is omitted, client falls back to `/api`.
+- Use HTTPS backend URL in production.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local Development
 
-## Learn More
+```bash
+cd client
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Default local URL: `http://localhost:3001` (or the port Next.js prints).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Build and Test
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run test
+npm run build
+```

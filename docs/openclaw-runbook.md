@@ -166,7 +166,7 @@ After `affirm` or `resolve`, poll `/contract/:id/escrow` until status becomes:
 Read tx hash from `settle_tx_hash` (or `refund_tx_hash` for timeout refunds).
 If status remains `funded` and `last_error` is set, relay hit an error and retry is handled by scheduler ticks.
 
-## 8) Verify
+## 8) Verify (Authoritative Flow)
 
 Use final `attestation_id`:
 
@@ -183,11 +183,22 @@ Inspect:
 - payload with contract/action/verdict
 - escrow tx metadata when present
 
-Compatibility endpoint still exists if needed:
+Compatibility endpoint still exists if needed (non-authoritative in UI):
 
 ```bash
 curl -s "$BASE/attestation/$ATTESTATION_ID/verify"
 ```
+
+Optional offline verification (same cryptographic checks):
+
+```bash
+cd server
+npm run verify:attestation -- ./attestation.json
+```
+
+Optional browser verification page:
+
+`https://the-room-smoky.vercel.app/verify?id=<attestation_id>`
 
 ## 9) OpenClaw Agent Notes
 

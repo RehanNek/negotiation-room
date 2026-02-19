@@ -1,297 +1,198 @@
-# Negotiation Room (The Room) — Private, Verifiable Negotiation
+# Negotiation Room (The Room)
 
-Private negotiation between two parties (humans or agents) with wallet-based identity. Deals become structured contracts with verifiable records. Optional onchain escrow on Sepolia (ETH) settles automatically based on the contract outcome.
+Private negotiation + verifiable contract evidence, running on EigenCompute.
 
-## What It Does
+Last updated: 2026-02-19
 
-Negotiation Room is a negotiation platform where two parties (humans or AI agents) can:
+## Production Snapshot
 
-1. **Negotiate privately** in a 1:1 room, with per-party private constraints (only visible to the owner).
-2. **Close deals safely** with a dual-confirmation “Done” protocol (both parties confirm the same draft terms + escrow amount).
-3. **Create structured contracts** for service agreements or conditional outcomes.
-4. **Optionally fund onchain escrow** (Sepolia ETH) and auto-settle based on service affirmation or conditional resolution.
-5. **Build wallet-linked reputation** from negotiation outcomes and behavior.
-6. **Verify records** via integrity proofs + onchain transaction links when escrow is enabled.
+- Website: [the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
+- EigenCompute app: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
+- Backend health (direct): `http://136.109.58.88:3000/health`
+- Latest verifiable backend release:
+  - commit: `df5f64cf6c81a0a22b544262672d0f03ea86d8f3`
+  - build: `8ecde563-121b-4464-b821-252a0fe956d2`
+  - provenance: `prov-ok sig-ok deps:2`
 
-## Live Deployment
+Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
 
-- **Website**: https://the-room-smoky.vercel.app
-- **API (direct)**: `http://136.109.58.88:3000`
-- **Health Check**: `http://136.109.58.88:3000/health` (includes `escrow_enabled`)
-- **EigenCompute Dashboard**: [View App](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
-- **App ID**: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
+## What The App Does
 
-## Demo Flow (Judge-Friendly)
+1. 1:1 wallet-auth negotiation with per-party private constraints.
+2. Dual-confirm `done` flow (both parties must confirm same terms hash).
+3. Structured service/conditional contracts.
+4. Optional Sepolia escrow prepare/fund/settle/refund flow.
+5. Attestation-based evidence for contract outcomes.
+6. Reputation tracking by wallet behavior.
 
-1. Connect MetaMask to start a session (wallet signature auth).
-2. Create a new room (choose deal type + category + required private constraints).
-3. Share the room code (or invite link) with a counterparty.
-4. Counterparty joins using the room code and their own private constraints.
-5. Chat until you agree, then click **Done**:
-   - Amount (ETH) is required
-   - Timeline/deliverables/notes are optional
-   - Both parties must confirm the same draft terms hash before a contract is created
-6. Open **Contracts** to see the created agreement.
-7. If onchain escrow is enabled:
-   - Payer clicks **Fund Escrow** and confirms the wallet tx on Sepolia.
-   - UI waits for onchain confirmation, then marks escrow funded and shows the funding tx hash.
-   - Service: receiver clicks **Affirm Delivery & Release Escrow** (or conditional deals use **Resolve Condition**).
-   - UI polls escrow state until `released`/`refunded`, then shows settlement/refund tx hash.
-8. Click **Verify Proof** to perform browser-local signature verification and review onchain tx links when present.
+## Trust Upgrade (vNext) Status
 
-## Escrow Behavior (Prod)
+Implemented:
 
-- Funding is a 2-step flow: `prepare` -> wallet tx confirmation -> `funded` API verification.
-- The **Fund Escrow** CTA is only shown while escrow is not prepared yet or still `awaiting_funding`.
-- Settlement after `affirm`/`resolve` is asynchronous and can take time due to block confirmation.
-- If settlement/refund relay hits a transient error, escrow remains `funded` and `last_error` is recorded for retry/inspection.
+1. Publicly verifiable attestations (EIP-712, not backend-trust-only HMAC).
+2. Browser-local verification in `/verify` (payload canonicalization + hash + signature recovery/verification).
+3. Endpoint-aware privacy routing (`NEXT_PUBLIC_API_URL` for non-auth routes, `/auth/*` proxy-compatible).
+4. Verifiable backend release path using `ecloud ... --verifiable`.
+5. Performance hardening:
+   - removed N+1 escrow fetch in contract wallet listing
+   - removed scheduler N+1 attestation lookup
+   - added contract/escrow/attestation indexes
 
-## Architecture
+## Attestation Model
 
-```
-┌─────────────────────────────────────────────────┐
-│              EigenCompute TEE                     │
-│                                                   │
-│  ┌─────────────────────────────────────────┐     │
-│  │         Express.js Server                │     │
-│  │                                          │     │
-│  │  /negotiate  - Create/Join/Offer/Status  │     │
-│  │  /contract   - View/Resolve conditions   │     │
-│  │            + Escrow prepare/funded/status│     │
-│  │  /reputation - Wallet reputation scores  │     │
-│  │  /attestation - TEE proof verification   │     │
-│  │                                          │     │
-│  │  ┌──────────┐  ┌──────────┐             │     │
-│  │  │ EigenAI  │  │ External │             │     │
-│  │  │ (LLM)   │  │ APIs     │             │     │
-│  │  │          │  │ CoinGecko│             │     │
-│  │  └──────────┘  └──────────┘             │     │
-│  │                                          │     │
-│  │  ┌──────────────────────────┐           │     │
-│  │  │    SQLite (sql.js)       │           │     │
-│  │  │  negotiations, contracts │           │     │
-│  │  │  reputation, attestations│           │     │
-│  │  └──────────────────────────┘           │     │
-│  └─────────────────────────────────────────┘     │
-│                                                   │
-└─────────────────────────────────────────────────┘
+`GET /attestation/:id` is the verification source of truth.
 
-┌──────────────┐         ┌──────────────┐
-│  Next.js     │ ──API──▶│  TEE Server  │
-│  Website     │         │              │
-│  (Humans)    │         │              │
-└──────────────┘         └──────────────┘
+Returned verification fields include:
 
-┌──────────────┐         ┌──────────────┐
-│  AI Agents   │ ──API──▶│  TEE Server  │
-│  (OpenClaw)  │         │              │
-│              │         │              │
-└──────────────┘         └──────────────┘
-```
+- `data_hash`, `hash_algo` (`sha256-rfc8785`)
+- `signature`, `sig_type` (`eip712`)
+- `signer_wallet`
+- `sig_domain`, `sig_types`, `sig_message`
+- legacy `tee_signature` alias (kept for compatibility)
 
-## How It Works
+`GET /attestation/:id/verify` is compatibility-only. UI must not treat it as authority.
 
-### Negotiation Flow
-1. **Party A** creates a room with deal type, category, and required private constraints.
-2. **Party A** shares the room code with Party B.
-3. **Party B** joins with their own required private constraints.
-4. Both parties chat and submit offers:
-   - Humans can type plain English (EigenAI parses to structured terms).
-   - Agents should submit structured JSON (`structured: true`) to skip parsing.
-5. When ready, parties close with **Done**:
-   - First party receives a draft (`terms_draft`) + `terms_hash`.
-   - Second party confirms the same `terms_hash`.
-   - A structured contract is created when both match.
-6. Either party can also **Walk Away**, which closes the negotiation without a deal.
+## API Routing and Privacy (Client)
 
-### Conditional Deals
-- Create a deal with a condition (e.g., "Bitcoin exceeds $100k by March 2026")
-- Trigger condition resolution via `POST /contract/:id/resolve` (typically after the resolution date)
-- The server fetches external data (e.g. CoinGecko) from inside the TEE runtime
-- EigenAI evaluates the condition with step-by-step reasoning
-- A verdict (TRUE/FALSE) is produced and recorded with an integrity proof
+Client behavior:
 
-### Reputation Scoring
-| Signal | Points |
-|--------|--------|
-| Deal reached | +10 |
-| Good faith offers | +5 |
-| Quick resolution (≤3 rounds) | +3 |
-| Walked away | -2 |
-| Lowballed repeatedly | -5 |
+- `/auth/*` -> `/api/*` proxy-compatible path
+- non-auth business routes -> direct `NEXT_PUBLIC_API_URL` when set
+- localhost -> local fallback
 
-## API Reference
+Implementation file: `/Users/rehannek/Documents/Negotiation room/client/src/lib/api.ts`.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/auth/challenge` | Create wallet-signing challenge |
-| POST | `/auth/verify` | Verify signed challenge and mint session token |
-| POST | `/auth/demo` | Mint a demo session token (for hackathon/demo mode) |
-| GET | `/auth/me` | Validate current session token |
-| POST | `/negotiate/create` | Create a negotiation room |
-| POST | `/negotiate/join` | Join with a room ID |
-| POST | `/negotiate/offer` | Submit an offer (plain English or structured JSON) |
-| POST | `/negotiate/done` | Confirm terms + amount and close (dual confirmation) |
-| GET | `/negotiate/status/:id` | Get negotiation state and rounds |
-| POST | `/negotiate/walkaway` | Walk away from negotiation |
-| GET | `/contract/:id` | Get contract details |
-| GET | `/contract/wallet/:wallet` | Get contracts by wallet |
-| POST | `/contract/:id/resolve` | Trigger condition resolution |
-| POST | `/contract/:id/affirm` | Service receiver affirms delivery (settles escrow when funded) |
-| POST | `/contract/:id/escrow/prepare` | Prepare escrow (returns tx params for payer funding) |
-| POST | `/contract/:id/escrow/funded` | Verify payer funding tx and mark escrow funded |
-| GET | `/contract/:id/escrow` | Fetch escrow status + tx hashes (`fund_tx_hash`, `settle_tx_hash`, `refund_tx_hash`) |
-| GET | `/reputation/:wallet` | Get reputation score |
-| GET | `/reputation/leaderboard` | Get top negotiators |
-| GET | `/attestation/:id` | Get attestation payload + EIP-712 metadata (source of truth for browser/offline verification) |
-| GET | `/attestation/:id/verify` | Compatibility verification endpoint (legacy-friendly, non-authoritative for UI) |
+## Verification Flow
 
-All `/negotiate/*` and `/contract/*` endpoints require `Authorization: Bearer <token>`.
+Browser `/verify` flow:
 
-## Frontend Routing + Privacy (Path A)
+1. Fetch `GET /attestation/:id`
+2. Canonicalize payload (`json-canonicalize`)
+3. Compute `sha256-rfc8785`
+4. Verify EIP-712 signature and recovered signer
+5. Render explicit Valid/Invalid diagnostics
 
-- Set `NEXT_PUBLIC_API_URL=https://<your-backend-domain>` in the frontend to send authenticated business traffic directly to backend HTTPS.
-- Keep `/auth/*` flows proxy-compatible (`/api/*`) for safe session/bootstrap fallback.
-- Configure backend CORS allowlist with:
-  - `CORS_ALLOWED_ORIGINS=https://the-room-smoky.vercel.app,https://<your-frontend-domain>`
-- If `CORS_ALLOWED_ORIGINS` is omitted, backend allows all origins for compatibility.
-
-## Quick Start
-
-### Run Locally
+Offline verification script (same cryptographic checks):
 
 ```bash
-# Server
+cd server
+npm run verify:attestation -- /path/to/attestation.json
+```
+
+## API Reference (Core)
+
+| Method | Endpoint | Notes |
+| --- | --- | --- |
+| POST | `/auth/challenge` | wallet challenge |
+| POST | `/auth/verify` | signed challenge -> bearer token |
+| POST | `/auth/demo` | demo session (if enabled) |
+| GET | `/auth/me` | validate token |
+| POST | `/negotiate/create` | create room |
+| POST | `/negotiate/join` | join room |
+| POST | `/negotiate/offer` | submit offer |
+| POST | `/negotiate/done` | dual-confirm close |
+| POST | `/negotiate/walkaway` | close without deal |
+| GET | `/negotiate/status/:id` | negotiation state |
+| GET | `/contract/:id` | contract details |
+| GET | `/contract/wallet/:wallet` | list contracts |
+| POST | `/contract/:id/resolve` | conditional resolution |
+| POST | `/contract/:id/affirm` | service affirmation |
+| POST | `/contract/:id/escrow/prepare` | escrow prepare |
+| POST | `/contract/:id/escrow/funded` | funding proof |
+| GET | `/contract/:id/escrow` | escrow state |
+| GET | `/reputation/:wallet` | wallet reputation |
+| GET | `/reputation/leaderboard` | leaderboard |
+| GET | `/attestation/:id` | attestation source of truth |
+| GET | `/attestation/:id/verify` | compatibility endpoint |
+
+Protected endpoints require:
+
+```http
+Authorization: Bearer <token>
+```
+
+## Local Development
+
+### 1) Server
+
+```bash
 cd server
 cp .env.example .env
-# Fill in EigenAI grant credentials + attestation/escrow config in .env
 npm install
 npm run dev
+```
 
-# Client (separate terminal)
+### 2) Client
+
+```bash
 cd client
 npm install
-# For production-style privacy path:
-# NEXT_PUBLIC_API_URL=https://<your-backend-domain>
 npm run dev
 ```
 
-### Try the API
+## Environment Variables
 
-```bash
-# Get a demo auth token (hackathon/demo mode)
-TOKEN=$(curl -s -X POST http://localhost:3000/auth/demo \
-  -H "Content-Type: application/json" \
-  -d '{}' | jq -r '.token')
+### Server (`server/.env`)
 
-# Create a negotiation room
-curl -X POST http://localhost:3000/negotiate/create \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deal_type": "service",
-    "category": "web-development",
-    "constraints": {"max_price": 500}
-  }'
+- `PORT` (default `3000`)
+- `DATABASE_PATH`
+- `AUTH_DEMO_MODE`
+- `CORS_ALLOWED_ORIGINS` (comma-separated allowlist)
+- `ESCROW_CHAIN_ID` (default `11155111`)
+- `ESCROW_VERIFIER_PRIVATE_KEY` (used for EIP-712 attestation signing identity)
 
-# Join the room (use the room_id from above)
-curl -X POST http://localhost:3000/negotiate/join \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "room_id": "ROOM_ID_HERE",
-    "constraints": {"min_price": 200}
-  }'
+Important:
 
-# Submit an offer
-curl -X POST http://localhost:3000/negotiate/offer \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "negotiation_id": "ROOM_ID_HERE",
-    "offer": "I will build a landing page for $400, delivered in 2 weeks"
-  }'
-```
+- If `ESCROW_VERIFIER_PRIVATE_KEY` is not set, code falls back to a built-in dev key.
+- Do not rely on fallback key in production.
 
-## Tech Stack
+### Client (`client/.env.local`)
 
-- **Backend**: Express.js + TypeScript
-- **Database**: SQLite via sql.js (pure JavaScript, no native deps)
-- **AI**: EigenAI (gpt-oss-120b-f16) via grant-based auth
-- **External Data**: CoinGecko API
-- **Frontend**: Next.js 16 + Tailwind CSS
-- **Identity**: MetaMask wallet-based
-- **Deployment**: EigenCompute TEE (Docker)
-- **Onchain Escrow (optional)**: Sepolia ETH + `EscrowVault` (Hardhat workspace in `contracts/`)
+- `NEXT_PUBLIC_API_URL` (recommended HTTPS backend URL)
+- `NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL` (optional, defaults to Sepolia Etherscan tx URL)
 
-## OpenClaw Skill
+## Verifiable Deployment Runbook
 
-AI agents can negotiate using The Room via the OpenClaw skill defined in `skill/skill.md`. The skill teaches agents how to:
-- Create and join negotiation rooms
-- Submit structured JSON offers
-- Close deals with the dual-confirm “Done” protocol
-- Fund and settle onchain escrow when enabled
-- Check contract status and reputation
-- Verify TEE attestations
+Prerequisites:
 
-## Notes / Limitations
+1. `ecloud auth whoami` shows the wallet you want to deploy with.
+2. `ecloud billing status` shows active compute subscription.
+3. EigenCloud GitHub App is installed and has access to this repo.
 
-- `Verify Proof` now performs browser-local EIP-712 signature verification over canonicalized payload data (`sha256-rfc8785`).
-- `GET /attestation/:id/verify` remains for compatibility, but the UI does not trust it as final authority.
-- In production with `NEXT_PUBLIC_API_URL` configured, authenticated business traffic bypasses Vercel proxy and goes directly to backend HTTPS.
-- Escrow settlement/release is asynchronous. Clients should poll `/contract/:id/escrow` to observe final onchain state and tx hash.
-
-Offline verification script (same cryptographic checks used by the app):
-
-```bash
-cd server
-npm run verify:attestation -- ../attestation.json
-```
-
-## Verifiable Deploy (EigenCloud)
-
-Use reproducible builds from a pinned commit:
+Deploy from pinned commit:
 
 ```bash
 ecloud compute app upgrade <APP_ID> \
+  --environment sepolia \
   --verifiable \
-  --repo <repo-url> \
-  --commit <git-sha> \
+  --repo https://github.com/<owner>/<repo>.git \
+  --commit <sha> \
   --build-context server \
-  --build-dockerfile Dockerfile
+  --build-dockerfile Dockerfile \
+  --env-file server/.env
 ```
 
-Expected outcome in EigenCloud dashboard:
-- Source/provenance metadata attached to active release
-- Source verification evidence improved toward 50%+ verifiability target
+Verify release metadata:
 
-## Project Structure
-
-```
-├── server/              # Express.js backend (runs in TEE)
-│   ├── src/
-│   │   ├── index.ts     # Entry point
-│   │   ├── routes/      # API endpoints
-│   │   ├── services/    # Business logic
-│   │   ├── db/          # SQLite schema + connection
-│   │   └── types.ts     # TypeScript types
-│   ├── Dockerfile
-│   └── package.json
-├── client/              # Next.js frontend
-│   ├── src/
-│   │   ├── app/         # Pages (home, negotiate, contracts, profile, verify)
-│   │   ├── components/  # UI components
-│   │   └── lib/         # API client
-│   └── package.json
-├── contracts/            # Hardhat workspace + EscrowVault.sol (Sepolia ETH)
-├── skill/
-│   └── skill.md         # OpenClaw skill for AI agents
-├── prd.md               # Product requirements
-└── progress.txt         # Build progress tracker
+```bash
+ecloud compute app releases <APP_ID> --environment sepolia
+ecloud compute build info <BUILD_ID>
 ```
 
-## Built For
+## Repo Layout
 
-[EigenCloud Open Innovation Challenge](https://eigencloud.xyz) — February 2026
+```text
+client/                  Next.js app
+server/                  Express/TypeScript backend
+contracts/               Hardhat escrow contract workspace
+docs/openclaw-runbook.md API-first execution runbook
+skill/skill.md           OpenClaw skill instructions
+prd.md                   Product requirements
+```
 
-Built with EigenAI + EigenCompute.
+## Related Docs
+
+- `/Users/rehannek/Documents/Negotiation room/client/README.md`
+- `/Users/rehannek/Documents/Negotiation room/docs/openclaw-runbook.md`
+- `/Users/rehannek/Documents/Negotiation room/skill/skill.md`
+- `/Users/rehannek/Documents/Negotiation room/prd.md`

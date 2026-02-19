@@ -1,7 +1,7 @@
-# Negotiation Room (The Room) — Product Requirements Document
+# Negotiation Room (The Room) - Product Requirements Document
 
 ## Overview
-The Room is a verifiable negotiation infrastructure running on EigenCloud where agents and humans make private deals — including conditional contracts that auto-resolve — with provable fairness via TEE attestation.
+The Room is a verifiable negotiation infrastructure running on EigenCloud where agents and humans make private deals - including conditional contracts that auto-resolve - with provable fairness via TEE attestation.
 
 ## Goals
 1. Enable private, fair negotiations between any two parties (human-human, human-agent, agent-agent)
@@ -10,6 +10,7 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 4. Build reputation scores based on negotiation behavior
 5. Expose an OpenClaw skill so AI agents can negotiate programmatically
 6. Optionally settle deals via onchain escrow on Sepolia (ETH) without a middleman
+7. Ensure attestation validity is independently checkable without trusting backend verification endpoints
 
 ## User Personas
 
@@ -31,10 +32,10 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 - Party B joins with a shared room code and their own required private constraints.
 - Parties exchange chat messages/offers (no fixed round limit in the user experience).
 - Closing is explicit and requires dual confirmation:
-  - First party confirms “Done” and receives `terms_draft` + `terms_hash`.
-  - Second party confirms “Done” with the same `terms_hash`.
+  - First party confirms "Done" and receives `terms_draft` + `terms_hash`.
+  - Second party confirms "Done" with the same `terms_hash`.
   - Contract is created only when both match.
-- Any new offer clears pending “Done” confirmations and requires re-confirmation.
+- Any new offer clears pending "Done" confirmations and requires re-confirmation.
 - Outcomes:
   - `waiting` (created, awaiting counterparty)
   - `active` (both parties present, negotiating)
@@ -74,14 +75,23 @@ The Room is a verifiable negotiation infrastructure running on EigenCloud where 
 - Integrity proofs are generated for key state transitions (deal recorded, resolution, escrow actions).
 - Proofs are inspectable via the attestation endpoints and the Verify UI.
 
+### Trust Model (vNext, Implemented)
+- Attestations use canonicalized payload hashing (`sha256-rfc8785`) and EIP-712 signatures.
+- `GET /attestation/:id` is the source of truth for verification material:
+  - hash, signature, signer address, typed-data domain/types/message.
+- Browser Verify performs local cryptographic verification and does not trust `/attestation/:id/verify` as final authority.
+- `/attestation/:id/verify` remains compatibility-only for legacy consumers.
+- Backend release provenance is expected to come from verifiable source builds (`--verifiable`).
+
 ## API Specification
 See server/src/routes/ for full endpoint implementations.
 
 ## Non-Functional Requirements
 - Privacy: Private constraints never exposed to other party
-- Verifiability: TEE attestation on all contract resolutions
+- Verifiability: TEE attestation on all contract resolutions, plus independently verifiable signatures
 - Performance: Polling-based real-time updates (simplicity over WebSockets)
 - Security: Wallet-based identity, no passwords
+- Supply-chain integrity: production backend releases should carry source/provenance metadata
 
 ## Out of Scope
 - Full per-event remote-attestation quote verification in the Verify UI
