@@ -100,6 +100,13 @@ export function initializeDatabase(db: Database): void {
       type TEXT NOT NULL,
       data_hash TEXT NOT NULL,
       tee_signature TEXT NOT NULL,
+      signature TEXT,
+      sig_type TEXT NOT NULL DEFAULT 'eip712',
+      signer_wallet TEXT,
+      sig_domain TEXT,
+      sig_types TEXT,
+      sig_message TEXT,
+      hash_algo TEXT NOT NULL DEFAULT 'sha256-rfc8785',
       payload TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (contract_id) REFERENCES contracts(id)
@@ -132,6 +139,12 @@ export function initializeDatabase(db: Database): void {
     )
   `);
 
+  db.run('CREATE INDEX IF NOT EXISTS idx_contracts_party_a_wallet ON contracts(party_a_wallet)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_contracts_party_b_wallet ON contracts(party_b_wallet)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_escrows_contract_id ON escrows(contract_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_escrows_status ON escrows(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_attestations_contract_id ON attestations(contract_id)');
+
   // Additive migrations for already-initialized databases.
   addColumnIfMissing(db, 'negotiations', 'final_terms_draft', 'TEXT');
   addColumnIfMissing(db, 'negotiations', 'final_terms_hash', 'TEXT');
@@ -142,6 +155,13 @@ export function initializeDatabase(db: Database): void {
   addColumnIfMissing(db, 'contracts', 'terms_hash', 'TEXT');
   addColumnIfMissing(db, 'contracts', 'confirmed_by_a_at', 'TEXT');
   addColumnIfMissing(db, 'contracts', 'confirmed_by_b_at', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'signature', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'sig_type', "TEXT NOT NULL DEFAULT 'eip712'");
+  addColumnIfMissing(db, 'attestations', 'signer_wallet', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'sig_domain', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'sig_types', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'sig_message', 'TEXT');
+  addColumnIfMissing(db, 'attestations', 'hash_algo', "TEXT NOT NULL DEFAULT 'sha256-rfc8785'");
 }
 
 function addColumnIfMissing(db: Database, tableName: string, columnName: string, sqlType: string): void {

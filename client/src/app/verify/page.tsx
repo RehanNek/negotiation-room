@@ -6,6 +6,7 @@ import EvidencePanel from '@/components/EvidencePanel';
 import InfoCallout from '@/components/InfoCallout';
 import StatusPill from '@/components/StatusPill';
 import { api } from '@/lib/api';
+import { verifyAttestationRecord, type LocalAttestationVerification } from '@/lib/attestation-core';
 import { formatTimestamp } from '@/lib/formatters';
 import { inferAttestationVerdict, verdictStatusCopy } from '@/lib/status';
 import type { AttestationVerification, ConditionVerdict } from '@/lib/types';
@@ -59,6 +60,7 @@ function VerifyWorkspace() {
   const searchParams = useSearchParams();
   const [attestationId, setAttestationId] = useState(searchParams.get('id') || '');
   const [result, setResult] = useState<AttestationVerification | null>(null);
+  const [localVerification, setLocalVerification] = useState<LocalAttestationVerification | null>(null);
   const [resolvedFromContract, setResolvedFromContract] = useState<string | null>(null);
   const [showTechnical, setShowTechnical] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -79,12 +81,15 @@ function VerifyWorkspace() {
     setLoading(true);
     setError('');
     setResult(null);
+    setLocalVerification(null);
     setResolvedFromContract(null);
     setShowTechnical(false);
 
     try {
-      const verification = await api.verifyAttestation(target);
-      setResult(verification);
+      const attestation = await api.getAttestation(target);
+      const verification = await verifyAttestationRecord(attestation);
+      setLocalVerification(verification);
+      setResult({ valid: verification.valid, attestation });
       setLoading(false);
       return;
     } catch {
@@ -97,10 +102,12 @@ function VerifyWorkspace() {
         throw new Error('No backend attestation exists for this contract yet.');
       }
 
-      const verification = await api.verifyAttestation(contract.attestation_id);
+      const attestation = await api.getAttestation(contract.attestation_id);
+      const verification = await verifyAttestationRecord(attestation);
       setAttestationId(contract.attestation_id);
       setResolvedFromContract(contract.id);
-      setResult(verification);
+      setLocalVerification(verification);
+      setResult({ valid: verification.valid, attestation });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Attestation not found or invalid');
     } finally {
@@ -195,8 +202,24 @@ function VerifyWorkspace() {
                     <span className="break-all font-mono text-[var(--ink)]">{result.attestation.data_hash}</span>
                   </p>
                   <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
-                    TEE signature:{' '}
-                    <span className="break-all font-mono text-[var(--ink)]">{result.attestation.tee_signature}</span>
+                    EIP-712 signature:{' '}
+                    <span className="break-all font-mono text-[var(--ink)]">{result.attestation.signature || result.attestation.tee_signature}</span>
+                  </p>
+                  <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+                    Expected signer:{' '}
+                    <span className="break-all font-mono text-[var(--ink)]">{result.attestation.signer_wallet || 'not available'}</span>
+                  </p>
+                  <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+                    Recovered signer:{' '}
+                    <span className="break-all font-mono text-[var(--ink)]">{localVerification?.recovered_signer || 'not recovered'}</span>
+                  </p>
+                  <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+                    Hash algorithm:{' '}
+                    <span className="break-all font-mono text-[var(--ink)]">{result.attestation.hash_algo || 'legacy'}</span>
+                  </p>
+                  <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 md:col-span-2">
+                    Verification reason:{' '}
+                    <span className="break-all font-mono text-[var(--ink)]">{localVerification?.reason || 'Signature checks passed'}</span>
                   </p>
                 </div>
 
@@ -215,7 +238,7 @@ function VerifyWorkspace() {
           <div className="space-y-4">
             <InfoCallout
               title="What this confirms"
-              description="The saved record is intact and matches the secure attestation signature."
+              description="Your browser recomputed the canonical payload hash and verified the EIP-712 signer locally."
               tone="success"
             />
             <InfoCallout

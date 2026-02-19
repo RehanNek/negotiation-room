@@ -111,7 +111,7 @@ function getRelayerClient() {
   return { walletClient, account };
 }
 
-function toEscrowModel(row: any): Escrow {
+export function toEscrowModel(row: any): Escrow {
   return {
     id: String(row.id),
     contract_id: String(row.contract_id),
@@ -314,7 +314,7 @@ function buildFundTx(escrow: Escrow, timeoutUnix: bigint): { to: string; value_w
   };
 }
 
-export function prepareEscrow(contractId: string, requesterWallet?: string): EscrowPrepareResult {
+export async function prepareEscrow(contractId: string, requesterWallet?: string): Promise<EscrowPrepareResult> {
   requireEscrowEnabled();
   const contract = get('SELECT * FROM contracts WHERE id = ?', [contractId]);
   if (!contract) throw notFound('Contract not found');
@@ -416,7 +416,7 @@ export function prepareEscrow(contractId: string, requesterWallet?: string): Esc
     );
   }
 
-  const attestation = createAttestation(contractId, 'escrow_prepared', {
+  const attestation = await createAttestation(contractId, 'escrow_prepared', {
     contract_id: contractId,
     deal_hash: dealHash,
     chain_id: chainId,
@@ -447,7 +447,13 @@ export async function markEscrowFunded(contractId: string, txHash: string, reque
     throw badRequest('tx_hash must be a valid 0x-prefixed 32-byte hash');
   }
 
-  const contract = get('SELECT * FROM contracts WHERE id = ?', [contractId]);
+  const contract = get(
+    `SELECT c.*, a.data_hash AS contract_attestation_data_hash
+     FROM contracts c
+     LEFT JOIN attestations a ON a.id = c.attestation_id
+     WHERE c.id = ?`,
+    [contractId]
+  );
   if (!contract) throw notFound('Contract not found');
   const requester = ensureParticipant(contract, requesterWallet);
 
@@ -518,7 +524,7 @@ export async function markEscrowFunded(contractId: string, txHash: string, reque
     [normalizedTxHash, Number(receipt.blockNumber), contractId]
   );
 
-  const attestation = createAttestation(contractId, 'escrow_funded', {
+  const attestation = await createAttestation(contractId, 'escrow_funded', {
     contract_id: contractId,
     deal_hash: escrow.deal_hash,
     tx_hash: normalizedTxHash,
@@ -537,16 +543,12 @@ export async function markEscrowFunded(contractId: string, txHash: string, reque
   // If contract was already resolved while waiting for funding, settle immediately.
   if (String(contract.status) === 'resolved' && (contract.verdict === 'TRUE' || contract.verdict === 'FALSE')) {
     const verdict = contract.verdict as ConditionVerdict;
-    const contractAttestation = contract.attestation_id
-      ? get('SELECT data_hash FROM attestations WHERE id = ?', [contract.attestation_id])
-      : null;
-
     // Settlement can take >10s due to block times and should not block the HTTP request (Vercel proxy timeout).
     tryAutoSettleEscrow(
       contractId,
       verdict,
       contract.attestation_id ? String(contract.attestation_id) : null,
-      contractAttestation?.data_hash ? `0x${String(contractAttestation.data_hash)}` : null
+      contract.contract_attestation_data_hash ? `0x${String(contract.contract_attestation_data_hash)}` : null
     ).catch((error: unknown) => {
       console.error('Auto-settle escrow failed after funding mark', {
         contractId,
@@ -627,7 +629,7 @@ async function settleEscrowOnchain(params: {
     [status, txHash, attestationId, escrow.contract_id]
   );
 
-  const escrowAttestation = createAttestation(escrow.contract_id, 'escrow_settled', {
+  const escrowAttestation = await createAttestation(escrow.contract_id, 'escrow_settled', {
     contract_id: escrow.contract_id,
     deal_hash: escrow.deal_hash,
     verdict,
@@ -698,7 +700,7 @@ async function refundEscrowOnchain(escrow: Escrow): Promise<void> {
     [txHash, escrow.contract_id]
   );
 
-  const attestation = createAttestation(escrow.contract_id, 'escrow_refunded_timeout', {
+  const attestation = await createAttestation(escrow.contract_id, 'escrow_refunded_timeout', {
     contract_id: escrow.contract_id,
     deal_hash: escrow.deal_hash,
     timeout_at: escrow.timeout_at,
@@ -714,9 +716,10 @@ async function schedulerTick(): Promise<void> {
 
   const nowIso = new Date().toISOString();
   const funded = all(
-    `SELECT e.*, c.status AS contract_status, c.verdict AS contract_verdict, c.attestation_id AS contract_attestation_id
+    `SELECT e.*, c.status AS contract_status, c.verdict AS contract_verdict, c.attestation_id AS contract_attestation_id, a.data_hash AS contract_attestation_data_hash
      FROM escrows e
      JOIN contracts c ON c.id = e.contract_id
+     LEFT JOIN attestations a ON a.id = c.attestation_id
      WHERE e.status IN ('funded', 'failed')`
   );
 
@@ -724,15 +727,11 @@ async function schedulerTick(): Promise<void> {
     const escrow = toEscrowModel(row);
 
     if (row.contract_status === 'resolved' && (row.contract_verdict === 'TRUE' || row.contract_verdict === 'FALSE')) {
-      const attestation = row.contract_attestation_id
-        ? get('SELECT data_hash FROM attestations WHERE id = ?', [row.contract_attestation_id])
-        : null;
-
       await tryAutoSettleEscrow(
         escrow.contract_id,
         row.contract_verdict as ConditionVerdict,
         row.contract_attestation_id ? String(row.contract_attestation_id) : null,
-        attestation?.data_hash ? (`0x${String(attestation.data_hash)}` as `0x${string}`) : null
+        row.contract_attestation_data_hash ? (`0x${String(row.contract_attestation_data_hash)}` as `0x${string}`) : null
       );
       continue;
     }
@@ -750,6 +749,10 @@ async function schedulerTick(): Promise<void> {
       }
     }
   }
+}
+
+export async function runEscrowSchedulerTickForTest(): Promise<void> {
+  await schedulerTick();
 }
 
 export function startEscrowScheduler(): void {

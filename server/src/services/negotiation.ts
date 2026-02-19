@@ -487,7 +487,7 @@ async function finalizeContract(
   const summary = await generateContractSummary(terms, neg.deal_type as string, neg.category as string);
   const params = JSON.parse(neg.params as string);
 
-  return createContract({
+  return await createContract({
     negotiation_id: neg.id as string,
     deal_type: neg.deal_type as string,
     terms,

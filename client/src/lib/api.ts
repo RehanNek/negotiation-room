@@ -21,9 +21,28 @@ import type {
   SubmitOfferResponse,
 } from './types';
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-  ? '/api'
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000');
+const DIRECT_API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function normalizeBase(base: string): string {
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+
+function resolveApiBase(path: string): string {
+  if (typeof window !== 'undefined' && isLocalHostname(window.location.hostname)) {
+    return normalizeBase(DIRECT_API_BASE || 'http://localhost:3000');
+  }
+
+  const isAuthPath = path.startsWith('/auth/');
+  if (DIRECT_API_BASE && !isAuthPath) {
+    return normalizeBase(DIRECT_API_BASE);
+  }
+
+  return '/api';
+}
 
 function readSavedWallet(): string | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -40,7 +59,8 @@ function withLegacyWallet<T extends object>(payload: T): T & { wallet_address?: 
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-  const res = await fetch(`${API_BASE}${path}`, {
+  const base = resolveApiBase(path);
+  const res = await fetch(`${base}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

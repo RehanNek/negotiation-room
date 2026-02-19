@@ -36,9 +36,9 @@ router.post('/:id/affirm', requireAuth, route(async (req, res) => {
   res.json(result);
 }));
 
-router.post('/:id/escrow/prepare', requireAuth, route((req, res) => {
+router.post('/:id/escrow/prepare', requireAuth, route(async (req, res) => {
   if (!req.authWallet) throw badRequest('No authenticated wallet found');
-  const result = prepareEscrow(req.params.id as string, req.authWallet);
+  const result = await prepareEscrow(req.params.id as string, req.authWallet);
   res.json(result);
 }));
 

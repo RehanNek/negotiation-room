@@ -12,6 +12,8 @@ process.env.GRANT_MESSAGE = '';
 process.env.GRANT_SIGNATURE = '';
 process.env.GRANT_WALLET = '';
 process.env.AUTH_DEMO_MODE = 'true';
+process.env.ESCROW_CHAIN_ID = '11155111';
+process.env.ESCROW_VERIFIER_PRIVATE_KEY = '0x59c6995e998f97a5a0044966f094538f5d4f3f9342a9a5a4f3c5e6d2f6d9c3f1';
 
 const walletA = '0x1111111111111111111111111111111111111111';
 const walletB = '0x2222222222222222222222222222222222222222';
@@ -875,12 +877,81 @@ describe('Negotiation API', () => {
     expect(contract.body.attestation_id).toBeTruthy();
     expect(contract.body.attestation_id).not.toBe(initialAttestationId);
 
+    const proof = await request(app).get(`/attestation/${contract.body.attestation_id}`);
+    expect(proof.status).toBe(200);
+    expect(proof.body.hash_algo).toBe('sha256-rfc8785');
+    expect(proof.body.sig_type).toBe('eip712');
+    expect(proof.body.signer_wallet).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(proof.body.signature).toMatch(/^0x[a-fA-F0-9]+$/);
+    expect(proof.body.sig_domain?.name).toBe('NegotiationRoomAttestation');
+    expect(proof.body.sig_message?.attestationId).toBe(contract.body.attestation_id);
+    expect(proof.body.sig_message?.contractId).toBe(contractId);
+    expect(proof.body.sig_message?.dataHash).toBe(proof.body.data_hash);
+
     const verify = await request(app).get(`/attestation/${contract.body.attestation_id}/verify`);
     expect(verify.status).toBe(200);
     expect(verify.body.valid).toBe(true);
     expect(verify.body.attestation?.type).toBe('service_affirmation');
     expect(verify.body.attestation?.payload?.action).toBe('service_delivery_affirmed');
     expect(verify.body.attestation?.payload?.verdict).toBe('TRUE');
+  });
+
+  it('fails attestation verification after payload tampering', async () => {
+    const tokenA = await authTokenFor(walletA);
+    const tokenB = await authTokenFor(walletB);
+
+    const create = await request(app)
+      .post('/negotiate/create')
+      .set(authHeader(tokenA))
+      .send({
+        deal_type: 'service',
+        category: 'data-labeling',
+        params: {},
+        constraints: {},
+      });
+    await request(app)
+      .post('/negotiate/join')
+      .set(authHeader(tokenB))
+      .send({
+        room_id: create.body.room_id,
+        constraints: {},
+      });
+
+    await request(app)
+      .post('/negotiate/offer')
+      .set(authHeader(tokenA))
+      .send({
+        negotiation_id: create.body.room_id,
+        structured: true,
+        offer: { price: 500, timeline: '3 days' },
+      });
+
+    await request(app)
+      .post('/negotiate/offer')
+      .set(authHeader(tokenB))
+      .send({
+        negotiation_id: create.body.room_id,
+        structured: true,
+        offer: { price: 495, timeline: '3 days' },
+      });
+
+    const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+    const contractId = done.body.contract?.id as string;
+    const attestationId = done.body.contract?.attestation_id as string;
+    expect(contractId).toBeTruthy();
+    expect(attestationId).toBeTruthy();
+
+    runQuery('UPDATE attestations SET payload = ? WHERE id = ?', [
+      JSON.stringify({
+        contract_id: contractId,
+        tampered: true,
+      }),
+      attestationId,
+    ]);
+
+    const verify = await request(app).get(`/attestation/${attestationId}/verify`);
+    expect(verify.status).toBe(404);
+    expect(verify.body.error).toContain('invalid');
   });
 
   it('forbids service providers from affirming escrow release', async () => {

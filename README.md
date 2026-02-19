@@ -37,7 +37,7 @@ Negotiation Room is a negotiation platform where two parties (humans or AI agent
    - UI waits for onchain confirmation, then marks escrow funded and shows the funding tx hash.
    - Service: receiver clicks **Affirm Delivery & Release Escrow** (or conditional deals use **Resolve Condition**).
    - UI polls escrow state until `released`/`refunded`, then shows settlement/refund tx hash.
-8. Click **Verify Proof** to view integrity proof details and (when present) onchain tx links.
+8. Click **Verify Proof** to perform browser-local signature verification and review onchain tx links when present.
 
 ## Escrow Behavior (Prod)
 
@@ -143,10 +143,18 @@ Negotiation Room is a negotiation platform where two parties (humans or AI agent
 | GET | `/contract/:id/escrow` | Fetch escrow status + tx hashes (`fund_tx_hash`, `settle_tx_hash`, `refund_tx_hash`) |
 | GET | `/reputation/:wallet` | Get reputation score |
 | GET | `/reputation/leaderboard` | Get top negotiators |
-| GET | `/attestation/:id` | Get attestation proof |
-| GET | `/attestation/:id/verify` | Verify attestation |
+| GET | `/attestation/:id` | Get attestation payload + EIP-712 metadata (source of truth for browser/offline verification) |
+| GET | `/attestation/:id/verify` | Compatibility verification endpoint (legacy-friendly, non-authoritative for UI) |
 
 All `/negotiate/*` and `/contract/*` endpoints require `Authorization: Bearer <token>`.
+
+## Frontend Routing + Privacy (Path A)
+
+- Set `NEXT_PUBLIC_API_URL=https://<your-backend-domain>` in the frontend to send authenticated business traffic directly to backend HTTPS.
+- Keep `/auth/*` flows proxy-compatible (`/api/*`) for safe session/bootstrap fallback.
+- Configure backend CORS allowlist with:
+  - `CORS_ALLOWED_ORIGINS=https://the-room-smoky.vercel.app,https://<your-frontend-domain>`
+- If `CORS_ALLOWED_ORIGINS` is omitted, backend allows all origins for compatibility.
 
 ## Quick Start
 
@@ -156,13 +164,15 @@ All `/negotiate/*` and `/contract/*` endpoints require `Authorization: Bearer <t
 # Server
 cd server
 cp .env.example .env
-# Fill in your EigenAI grant credentials in .env
+# Fill in EigenAI grant credentials + attestation/escrow config in .env
 npm install
 npm run dev
 
 # Client (separate terminal)
 cd client
 npm install
+# For production-style privacy path:
+# NEXT_PUBLIC_API_URL=https://<your-backend-domain>
 npm run dev
 ```
 
@@ -226,9 +236,34 @@ AI agents can negotiate using The Room via the OpenClaw skill defined in `skill/
 
 ## Notes / Limitations
 
-- The current `Verify Proof` flow validates record integrity using a backend-generated signature. It is designed for a hackathon demo and will be upgraded to full remote-attestation style verification.
-- In production, the website talks to the backend through a Next.js `/api/*` proxy route. The backend itself runs inside EigenCompute.
+- `Verify Proof` now performs browser-local EIP-712 signature verification over canonicalized payload data (`sha256-rfc8785`).
+- `GET /attestation/:id/verify` remains for compatibility, but the UI does not trust it as final authority.
+- In production with `NEXT_PUBLIC_API_URL` configured, authenticated business traffic bypasses Vercel proxy and goes directly to backend HTTPS.
 - Escrow settlement/release is asynchronous. Clients should poll `/contract/:id/escrow` to observe final onchain state and tx hash.
+
+Offline verification script (same cryptographic checks used by the app):
+
+```bash
+cd server
+npm run verify:attestation -- ../attestation.json
+```
+
+## Verifiable Deploy (EigenCloud)
+
+Use reproducible builds from a pinned commit:
+
+```bash
+ecloud compute app upgrade <APP_ID> \
+  --verifiable \
+  --repo <repo-url> \
+  --commit <git-sha> \
+  --build-context server \
+  --build-dockerfile Dockerfile
+```
+
+Expected outcome in EigenCloud dashboard:
+- Source/provenance metadata attached to active release
+- Source verification evidence improved toward 50%+ verifiability target
 
 ## Project Structure
 

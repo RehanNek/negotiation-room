@@ -11,8 +11,8 @@ router.get('/:id', route((req, res) => {
   res.json(attestation);
 }));
 
-router.get('/:id/verify', route((req, res) => {
-  const result = verifyAttestation(req.params.id as string);
+router.get('/:id/verify', route(async (req, res) => {
+  const result = await verifyAttestation(req.params.id as string);
   if (!result.valid) throw notFound('Attestation not found or invalid');
   res.json(result);
 }));

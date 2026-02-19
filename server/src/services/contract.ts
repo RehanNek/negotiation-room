@@ -3,9 +3,9 @@ import { run, get, all, flushDb } from '../db';
 import { evaluateCondition } from './ai';
 import { fetchExternalData } from './external';
 import { createAttestation } from './attestation';
-import { getEscrowByContractId, tryAutoSettleEscrow } from './escrow';
+import { getEscrowByContractId, toEscrowModel, tryAutoSettleEscrow } from './escrow';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
-import type { ConditionVerdict } from '../types';
+import type { ConditionVerdict, Escrow } from '../types';
 
 interface CreateContractParams {
   negotiation_id: string;
@@ -79,7 +79,7 @@ function resolveServiceRoles(contract: any): {
   };
 }
 
-export function createContract(params: CreateContractParams): any {
+export async function createContract(params: CreateContractParams): Promise<any> {
   const id = uuidv4();
   const status = params.deal_type === 'conditional' ? 'pending_resolution' : 'active';
 
@@ -118,7 +118,7 @@ export function createContract(params: CreateContractParams): any {
   }
 
   const createdAt = new Date().toISOString();
-  const dealAttestation = createAttestation(id, 'deal_recorded', {
+  const dealAttestation = await createAttestation(id, 'deal_recorded', {
     contract_id: id,
     negotiation_id: params.negotiation_id,
     deal_type: params.deal_type,
@@ -170,10 +170,21 @@ export function getContractsByWallet(wallet: string, requesterWallet?: string): 
     [wallet, wallet]
   );
 
+  const contractIds = contracts.map((contract) => String(contract.id));
+  const escrowByContractId = new Map<string, Escrow>();
+  if (contractIds.length > 0) {
+    const placeholders = contractIds.map(() => '?').join(', ');
+    const escrowRows = all(`SELECT * FROM escrows WHERE contract_id IN (${placeholders})`, contractIds);
+    for (const row of escrowRows) {
+      const escrow = toEscrowModel(row);
+      escrowByContractId.set(escrow.contract_id, escrow);
+    }
+  }
+
   return contracts.map((c: any) => ({
     ...c,
     terms: JSON.parse(c.terms as string),
-    escrow: getEscrowByContractId(String(c.id)) || undefined,
+    escrow: escrowByContractId.get(String(c.id)) || undefined,
   }));
 }
 
@@ -207,7 +218,7 @@ export async function resolveCondition(contractId: string, requesterWallet?: str
     [verdict, JSON.stringify(externalData), evaluation.reasoning, condition.id as string]
   );
 
-  const attestation = createAttestation(contractId, 'condition_resolution', {
+  const attestation = await createAttestation(contractId, 'condition_resolution', {
     contract_id: contractId,
     condition: condition.description,
     external_data: externalData,
@@ -281,7 +292,7 @@ export async function affirmServiceDelivery(contractId: string, requesterWallet?
   const resolvedAt = new Date().toISOString();
   const reasoning = 'Service receiver affirmed completion. Demo escrow release recorded for service provider.';
 
-  const attestation = createAttestation(contractId, 'service_affirmation', {
+  const attestation = await createAttestation(contractId, 'service_affirmation', {
     contract_id: contractId,
     action: 'service_delivery_affirmed',
     verdict: 'TRUE',

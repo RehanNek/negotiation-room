@@ -127,9 +127,37 @@ export interface AttestationRecord {
   contract_id: string;
   type: string;
   data_hash: string;
-  tee_signature: string;
+  tee_signature: string; // legacy alias
+  signature?: string | null;
+  sig_type?: string | null;
+  signer_wallet?: string | null;
+  sig_domain?: AttestationSignatureDomain | null;
+  sig_types?: AttestationSignatureTypes | null;
+  sig_message?: AttestationSignatureMessage | null;
+  hash_algo?: string | null;
   payload: Record<string, unknown>;
   created_at: string;
+}
+
+export interface AttestationSignatureDomain {
+  name: string;
+  version: string;
+  chainId: number;
+}
+
+export interface AttestationSignatureMessage {
+  attestationId: string;
+  contractId: string;
+  attestationType: string;
+  dataHash: string;
+  createdAt: string;
+}
+
+export interface AttestationSignatureTypes {
+  RoomAttestation: ReadonlyArray<{
+    name: string;
+    type: string;
+  }>;
 }
 
 export interface AttestationVerification {

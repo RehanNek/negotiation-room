@@ -171,15 +171,23 @@ If status remains `funded` and `last_error` is set, relay hit an error and retry
 Use final `attestation_id`:
 
 ```bash
-curl -s "$BASE/attestation/$ATTESTATION_ID/verify"
+curl -s "$BASE/attestation/$ATTESTATION_ID"
 ```
 
 Inspect:
 
-- `valid`
+- `hash_algo` (`sha256-rfc8785`)
+- `signature` + `signer_wallet`
+- `sig_domain`, `sig_types`, `sig_message`
 - attestation `type`
 - payload with contract/action/verdict
 - escrow tx metadata when present
+
+Compatibility endpoint still exists if needed:
+
+```bash
+curl -s "$BASE/attestation/$ATTESTATION_ID/verify"
+```
 
 ## 9) OpenClaw Agent Notes
 
