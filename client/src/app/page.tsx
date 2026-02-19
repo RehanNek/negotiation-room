@@ -34,29 +34,34 @@ export default function HomePage() {
     <div className="space-y-7 md:space-y-10">
       <HeroNarrative />
 
-      <section className="grid gap-4 md:gap-5 md:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-4 md:gap-5 md:grid-cols-2">
         <EvidencePanel
+          className="h-full"
           title="Privacy Layer"
           subtitle="Connect with a wallet and negotiate with private constraints that are not exposed to counterparties or platform operators."
         >
           <WalletConnect onConnect={handleConnect} address={wallet} />
-          <p className="text-sm text-[var(--muted-ink)]">
-            EigenCloud TEE isolates execution, so deal logic runs inside verifiable compute rather than a trusted middleman.
-          </p>
         </EvidencePanel>
 
         {wallet && reputation ? (
-          <ReputationBadge score={reputation.total_reputation} goodFaith={reputation.good_faith_score} deals={reputation.deals_completed} />
+          <ReputationBadge
+            className="h-full"
+            showTier={false}
+            score={reputation.total_reputation}
+            goodFaith={reputation.good_faith_score}
+            deals={reputation.deals_completed}
+          />
         ) : (
           <EmptyState
+            className="h-full"
             title="No reputation loaded"
             description="Connect a wallet to see how completed agreements and attested outcomes build verifiable trust over time."
           />
         )}
       </section>
 
-      <section className="grid gap-4 md:gap-5 md:grid-cols-[1.35fr_1fr]">
-        <EvidencePanel title="Verifiability Layer" subtitle="Judges can inspect end-to-end evidence without trusting a platform intermediary.">
+      <section className="grid gap-4 md:gap-5 md:grid-cols-2">
+        <EvidencePanel className="h-full" title="Verifiability Layer">
           <ul className="space-y-2 text-sm text-[var(--muted-ink)]">
             <li>• Deal state is recorded with verifiable contract snapshots.</li>
             <li>• Rule application (condition checks or service affirmation) produces attested outcomes.</li>
@@ -69,7 +74,7 @@ export default function HomePage() {
           </div>
         </EvidencePanel>
 
-        <article className="card relative p-5 md:p-6">
+        <article className="card relative h-full p-5 md:p-6">
           <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent-gold)]/70 to-transparent" />
           <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--ink)]">No-Middleman Guarantee</h3>
           <ul className="mt-3 space-y-2 text-sm text-[var(--muted-ink)]">

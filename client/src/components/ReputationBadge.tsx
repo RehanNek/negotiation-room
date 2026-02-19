@@ -7,6 +7,8 @@ interface ReputationBadgeProps {
   goodFaith: number;
   deals: number;
   compact?: boolean;
+  showTier?: boolean;
+  className?: string;
 }
 
 function tierForScore(score: number): { label: string; tone: 'success' | 'info' | 'warning' } {
@@ -17,7 +19,14 @@ function tierForScore(score: number): { label: string; tone: 'success' | 'info' 
   return { label: 'Unproven', tone: 'info' };
 }
 
-export default function ReputationBadge({ score, goodFaith, deals, compact = false }: ReputationBadgeProps) {
+export default function ReputationBadge({
+  score,
+  goodFaith,
+  deals,
+  compact = false,
+  showTier = true,
+  className = '',
+}: ReputationBadgeProps) {
   const tier = tierForScore(score);
 
   if (compact) {
@@ -25,10 +34,10 @@ export default function ReputationBadge({ score, goodFaith, deals, compact = fal
   }
 
   return (
-    <div className="card space-y-3 p-5">
+    <div className={`card space-y-3 p-5 ${className}`.trim()}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold uppercase tracking-wide text-[var(--ink)]">Reputation Ledger</p>
-        <StatusPill label={tier.label} tone={tier.tone} />
+        {showTier ? <StatusPill label={tier.label} tone={tier.tone} /> : null}
       </div>
 
       <div className="flex items-end gap-2">
