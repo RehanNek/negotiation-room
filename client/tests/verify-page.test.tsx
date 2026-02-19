@@ -16,30 +16,41 @@ vi.mock('@/lib/api', () => ({
   api: {
     getAttestation: vi.fn(),
     getContract: vi.fn(),
+    getEscrow: vi.fn(),
   },
 }));
 
 const mockedApi = api as {
   getAttestation: ReturnType<typeof vi.fn>;
   getContract: ReturnType<typeof vi.fn>;
+  getEscrow: ReturnType<typeof vi.fn>;
 };
 
-async function makeSignedRecord(): Promise<AttestationRecord> {
+async function makeSignedRecord(options?: {
+  id?: string;
+  contractId?: string;
+  type?: string;
+  payload?: Record<string, unknown>;
+  createdAt?: string;
+}): Promise<AttestationRecord> {
   const signer = privateKeyToAccount(
     '0x59c6995e998f97a5a0044966f094538f5d4f3f9342a9a5a4f3c5e6d2f6d9c3f1'
   );
-  const payload = {
-    contract_id: 'contract-123',
+  const contractId = options?.contractId || 'contract-123';
+  const payload = options?.payload || {
+    contract_id: contractId,
     action: 'service_delivery_affirmed',
     verdict: 'TRUE',
   };
+  const attestationId = options?.id || 'attest-123';
+  const attestationType = options?.type || 'service_affirmation';
   const dataHash = computeCanonicalPayloadHash(payload);
-  const createdAt = '2026-02-18T00:00:00.000Z';
+  const createdAt = options?.createdAt || '2026-02-18T00:00:00.000Z';
   const domain = buildAttestationDomain(11155111);
   const message = buildAttestationMessage({
-    id: 'attest-123',
-    contract_id: 'contract-123',
-    type: 'service_affirmation',
+    id: attestationId,
+    contract_id: contractId,
+    type: attestationType,
     data_hash: dataHash,
     created_at: createdAt,
     tee_signature: '',
@@ -61,9 +72,9 @@ async function makeSignedRecord(): Promise<AttestationRecord> {
   });
 
   return {
-    id: 'attest-123',
-    contract_id: 'contract-123',
-    type: 'service_affirmation',
+    id: attestationId,
+    contract_id: contractId,
+    type: attestationType,
     data_hash: dataHash,
     tee_signature: signature,
     signature,
@@ -91,11 +102,19 @@ describe('Verify page', () => {
     currentSearchParams = new URLSearchParams();
     mockedApi.getAttestation.mockReset();
     mockedApi.getContract.mockReset();
+    mockedApi.getEscrow.mockReset();
   });
 
   it('renders proof valid from browser-local verification', async () => {
     currentSearchParams = new URLSearchParams('id=attest-123');
     mockedApi.getAttestation.mockResolvedValue(await makeSignedRecord());
+    mockedApi.getContract.mockResolvedValue({
+      id: 'contract-123',
+      status: 'resolved',
+      verdict: 'TRUE',
+      attestation_id: 'attest-123',
+    });
+    mockedApi.getEscrow.mockRejectedValue(new Error('Escrow not prepared'));
 
     render(<VerifyPage />);
 
@@ -114,13 +133,54 @@ describe('Verify page', () => {
     mockedApi.getAttestation
       .mockRejectedValueOnce(new Error('not found'))
       .mockResolvedValueOnce(tamperedRecord);
-    mockedApi.getContract.mockResolvedValue({ id: 'contract-123', attestation_id: 'attest-123' });
+    mockedApi.getContract.mockResolvedValue({
+      id: 'contract-123',
+      status: 'resolved',
+      verdict: 'FALSE',
+      attestation_id: 'attest-123',
+    });
+    mockedApi.getEscrow.mockRejectedValue(new Error('Escrow not prepared'));
 
     render(<VerifyPage />);
 
     await screen.findByText('Proof Invalid');
     await waitFor(() => {
       expect(screen.getByText('Loaded from contract id')).toBeInTheDocument();
+    });
+  });
+
+  it('upgrades stale attestation links to the latest contract attestation', async () => {
+    currentSearchParams = new URLSearchParams('id=attest-old');
+    const oldRecord = await makeSignedRecord({
+      id: 'attest-old',
+      type: 'deal_recorded',
+      payload: { contract_id: 'contract-123', status: 'active' },
+      createdAt: '2026-02-18T00:00:00.000Z',
+    });
+    const latestRecord = await makeSignedRecord({
+      id: 'attest-latest',
+      type: 'service_affirmation',
+      payload: { contract_id: 'contract-123', action: 'service_delivery_affirmed', verdict: 'TRUE' },
+      createdAt: '2026-02-18T01:00:00.000Z',
+    });
+
+    mockedApi.getAttestation
+      .mockResolvedValueOnce(oldRecord)
+      .mockResolvedValueOnce(latestRecord);
+    mockedApi.getContract.mockResolvedValue({
+      id: 'contract-123',
+      status: 'resolved',
+      verdict: 'TRUE',
+      attestation_id: 'attest-latest',
+    });
+    mockedApi.getEscrow.mockRejectedValue(new Error('Escrow not prepared'));
+
+    render(<VerifyPage />);
+
+    await screen.findByText('Proof Valid');
+    await waitFor(() => {
+      expect(screen.getByText('Loaded from contract id')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('attest-latest')).toBeInTheDocument();
     });
   });
 });

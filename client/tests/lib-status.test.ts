@@ -65,5 +65,17 @@ describe('status copy', () => {
         payload: {},
       })
     ).toBeUndefined();
+    expect(
+      inferAttestationVerdict({
+        type: 'escrow_settled',
+        payload: { status: 'released' },
+      })
+    ).toBe('TRUE');
+    expect(
+      inferAttestationVerdict({
+        type: 'escrow_settled',
+        payload: { status: 'refunded' },
+      })
+    ).toBe('FALSE');
   });
 });

@@ -144,11 +144,16 @@ export default function ContractQueueCard({
   const readableSummary = buildReadableContractSummary(contract.deal_type, contract.summary, contract.terms);
   const escrow = contract.escrow;
   const lockedEscrowAmount = deriveLockedEscrowAmount(termsRecord, agreedTerms, escrow?.amount_wei);
-  const verifyAttestationId = escrow?.attestation_id || contract.attestation_id || null;
-  const payerWallet = (
+  const verifyAttestationId = contract.status === 'resolved'
+    ? (contract.attestation_id || escrow?.attestation_id || null)
+    : (escrow?.attestation_id || contract.attestation_id || null);
+  const inferredPayerWallet = (
     [agreedTerms.payer_wallet, agreedTerms.client_wallet, agreedTerms.buyer_wallet, agreedTerms.requester_wallet, termsRecord.payer_wallet, contract.party_a_wallet]
       .find((value) => typeof value === 'string' && value.trim()) as string | undefined
   ) || contract.party_a_wallet;
+  const payerWallet = escrow?.payer_wallet || inferredPayerWallet;
+  const releaseRecipientWallet = escrow?.recipient_if_true_wallet || providerWallet;
+  const refundRecipientWallet = escrow?.recipient_if_false_wallet || payerWallet;
   const escrowNeedsFunding = Boolean(!escrow || escrow.status === 'awaiting_funding' || (escrow.status === 'failed' && !escrow.fund_tx_hash));
   const payerCanFundEscrow = Boolean(
     onFundEscrow &&
@@ -217,6 +222,12 @@ export default function ContractQueueCard({
         <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
           <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
             Payer: <span className="font-mono text-[var(--ink)]">{formatWallet(payerWallet)}</span>
+          </p>
+          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+            Release to provider: <span className="font-mono text-[var(--ink)]">{formatWallet(releaseRecipientWallet)}</span>
+          </p>
+          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+            Refund back to payer: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
           </p>
           <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
             Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>

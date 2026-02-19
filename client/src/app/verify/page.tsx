@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { verifyAttestationRecord, type LocalAttestationVerification } from '@/lib/attestation-core';
 import { formatTimestamp } from '@/lib/formatters';
 import { inferAttestationVerdict, verdictStatusCopy } from '@/lib/status';
-import type { AttestationVerification, ConditionVerdict } from '@/lib/types';
+import type { AttestationRecord, AttestationVerification, ConditionVerdict, EscrowViewModel } from '@/lib/types';
 
 function compactId(value: string, start: number = 12, end: number = 8): string {
   if (!value) return value;
@@ -56,11 +56,65 @@ function extractOnchainEvidence(payload: Record<string, unknown> | undefined): {
   };
 }
 
+async function loadMostRelevantAttestationForContract(
+  contractId: string,
+  fallbackAttestation?: AttestationRecord
+): Promise<{ attestation: AttestationRecord; contractVerdict?: ConditionVerdict | null }> {
+  const contract = await api.getContract(contractId);
+  let escrow: EscrowViewModel | null = null;
+  try {
+    escrow = await api.getEscrow(contractId);
+  } catch {
+    escrow = null;
+  }
+
+  const candidateIds: string[] = [];
+  if ((escrow?.status === 'released' || escrow?.status === 'refunded') && escrow.attestation_id) {
+    candidateIds.push(escrow.attestation_id);
+  }
+  if (contract.status === 'resolved' && contract.attestation_id) {
+    candidateIds.push(contract.attestation_id);
+  }
+  if (escrow?.attestation_id) {
+    candidateIds.push(escrow.attestation_id);
+  }
+  if (contract.attestation_id) {
+    candidateIds.push(contract.attestation_id);
+  }
+  if (fallbackAttestation?.id) {
+    candidateIds.push(fallbackAttestation.id);
+  }
+
+  const uniqueIds = Array.from(new Set(candidateIds.filter((id): id is string => Boolean(id?.trim()))));
+  if (uniqueIds.length === 0) {
+    throw new Error('No backend attestation exists for this contract yet.');
+  }
+
+  for (const candidateId of uniqueIds) {
+    if (fallbackAttestation && candidateId === fallbackAttestation.id) {
+      return { attestation: fallbackAttestation, contractVerdict: contract.verdict };
+    }
+
+    try {
+      const attestation = await api.getAttestation(candidateId);
+      return { attestation, contractVerdict: contract.verdict };
+    } catch {
+      // Try the next candidate attestation id.
+    }
+  }
+
+  if (fallbackAttestation) {
+    return { attestation: fallbackAttestation, contractVerdict: contract.verdict };
+  }
+  throw new Error('No backend attestation could be loaded for this contract.');
+}
+
 function VerifyWorkspace() {
   const searchParams = useSearchParams();
   const [attestationId, setAttestationId] = useState(searchParams.get('id') || '');
   const [result, setResult] = useState<AttestationVerification | null>(null);
   const [localVerification, setLocalVerification] = useState<LocalAttestationVerification | null>(null);
+  const [contractVerdict, setContractVerdict] = useState<ConditionVerdict | null | undefined>(undefined);
   const [resolvedFromContract, setResolvedFromContract] = useState<string | null>(null);
   const [showTechnical, setShowTechnical] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -82,32 +136,42 @@ function VerifyWorkspace() {
     setError('');
     setResult(null);
     setLocalVerification(null);
+    setContractVerdict(undefined);
     setResolvedFromContract(null);
     setShowTechnical(false);
 
-    try {
-      const attestation = await api.getAttestation(target);
-      const verification = await verifyAttestationRecord(attestation);
+    const directAttestation = await api.getAttestation(target).catch(() => null);
+    if (directAttestation) {
+      let selectedAttestation = directAttestation;
+      let latestVerdict: ConditionVerdict | null | undefined;
+      let replacedByContractLookup = false;
+      try {
+        const preferred = await loadMostRelevantAttestationForContract(directAttestation.contract_id, directAttestation);
+        selectedAttestation = preferred.attestation;
+        latestVerdict = preferred.contractVerdict;
+        replacedByContractLookup = preferred.attestation.id !== directAttestation.id;
+      } catch {
+        latestVerdict = undefined;
+      }
+
+      const verification = await verifyAttestationRecord(selectedAttestation);
       setLocalVerification(verification);
-      setResult({ valid: verification.valid, attestation });
+      setContractVerdict(latestVerdict);
+      setResolvedFromContract(replacedByContractLookup ? directAttestation.contract_id : null);
+      setAttestationId(selectedAttestation.id);
+      setResult({ valid: verification.valid, attestation: selectedAttestation });
       setLoading(false);
       return;
-    } catch {
-      // Fallback path: user may have provided a contract id.
     }
 
     try {
-      const contract = await api.getContract(target);
-      if (!contract.attestation_id) {
-        throw new Error('No backend attestation exists for this contract yet.');
-      }
-
-      const attestation = await api.getAttestation(contract.attestation_id);
-      const verification = await verifyAttestationRecord(attestation);
-      setAttestationId(contract.attestation_id);
-      setResolvedFromContract(contract.id);
+      const preferred = await loadMostRelevantAttestationForContract(target);
+      const verification = await verifyAttestationRecord(preferred.attestation);
+      setAttestationId(preferred.attestation.id);
+      setResolvedFromContract(target);
+      setContractVerdict(preferred.contractVerdict);
       setLocalVerification(verification);
-      setResult({ valid: verification.valid, attestation });
+      setResult({ valid: verification.valid, attestation: preferred.attestation });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Attestation not found or invalid');
     } finally {
@@ -115,7 +179,7 @@ function VerifyWorkspace() {
     }
   }
 
-  const normalizedVerdict: ConditionVerdict | undefined = inferAttestationVerdict(result?.attestation);
+  const normalizedVerdict: ConditionVerdict | undefined = inferAttestationVerdict(result?.attestation) || contractVerdict || undefined;
   const verdictCopy = verdictStatusCopy(normalizedVerdict);
   const onchain = extractOnchainEvidence(result?.attestation?.payload);
 

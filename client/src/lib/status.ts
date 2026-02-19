@@ -62,5 +62,13 @@ export function inferAttestationVerdict(attestation?: {
     return 'TRUE';
   }
 
+  const payloadStatus = attestation?.payload?.status;
+  if (payloadStatus === 'released') {
+    return 'TRUE';
+  }
+  if (payloadStatus === 'refunded') {
+    return 'FALSE';
+  }
+
   return undefined;
 }

@@ -90,13 +90,16 @@ function ContractsWorkspace() {
     setError('');
   }, []);
 
-  const loadContracts = useCallback(async () => {
+  const loadContracts = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     if (!wallet) {
       setContracts([]);
       return;
     }
 
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const list = await api.getContractsByWallet(wallet);
@@ -105,13 +108,26 @@ function ContractsWorkspace() {
       setError(err instanceof Error ? err.message : 'Failed to load contracts');
       setContracts([]);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [wallet]);
 
   useEffect(() => {
     void loadContracts();
   }, [loadContracts]);
+
+  useEffect(() => {
+    if (!wallet) return;
+
+    const poller = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void loadContracts({ silent: true });
+    }, 6000);
+
+    return () => window.clearInterval(poller);
+  }, [wallet, loadContracts]);
 
   useEffect(() => {
     api.health()
@@ -135,7 +151,7 @@ function ContractsWorkspace() {
 
     const timer = window.setTimeout(() => {
       setDealRetryCount((value) => value + 1);
-      void loadContracts();
+      void loadContracts({ silent: true });
     }, 1200);
 
     return () => window.clearTimeout(timer);
@@ -297,7 +313,7 @@ function ContractsWorkspace() {
       setNotice({
         tone: 'success',
         title: 'Escrow funded',
-        description: 'Funding confirmed and recorded. The Fund Escrow button should disappear now.',
+        description: 'Funding confirmed and recorded onchain.',
         txHash,
       });
       await loadContracts();

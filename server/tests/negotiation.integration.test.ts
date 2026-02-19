@@ -598,6 +598,105 @@ describe('Negotiation API', () => {
     }
   });
 
+  it('defaults service escrow payer to the configured receiver wallet and releases to provider', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'consulting',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'I can provide 4 strategy sessions. Payment from client escrow after approval.',
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'Agreed. I am the receiver/client for this service.',
+        });
+
+      const firstDone = await request(app)
+        .post('/negotiate/done')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          escrow_amount_eth: '0.02',
+        });
+      expect(firstDone.status).toBe(200);
+
+      const secondDone = await request(app)
+        .post('/negotiate/done')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          terms_hash: firstDone.body.terms_hash,
+          escrow_amount_eth: '0.02',
+        });
+      expect(secondDone.status).toBe(200);
+      expect(secondDone.body.status).toBe('deal');
+
+      const contractId = secondDone.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const nextTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(nextTerms), contractId]);
+
+      const prepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenB))
+        .send({});
+
+      expect(prepare.status).toBe(200);
+      expect(prepare.body.escrow?.payer_wallet).toBe(walletB.toLowerCase());
+      expect(prepare.body.escrow?.recipient_if_true_wallet).toBe(walletA.toLowerCase());
+      expect(prepare.body.escrow?.recipient_if_false_wallet).toBe(walletB.toLowerCase());
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+    }
+  });
+
   it('invalidates pending done confirmations when a new offer is submitted', async () => {
     const tokenA = await authTokenFor(walletA);
     const tokenB = await authTokenFor(walletB);

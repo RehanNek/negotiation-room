@@ -324,6 +324,9 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
   const agreedTerms = parseAgreedTerms(terms);
   const contractAddress = getEscrowContractAddress();
   const chainId = getEscrowChainId();
+  const serviceRoles = String(contract.deal_type) === 'service'
+    ? resolveServiceRoles(contract, terms, agreedTerms)
+    : null;
 
   const payer = pickWallet(
     agreedTerms.payer_wallet,
@@ -334,6 +337,7 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
     terms.client_wallet,
     terms.buyer_wallet,
     terms.requester_wallet,
+    serviceRoles?.receiver,
     contract.party_a_wallet
   );
   if (!payer) throw badRequest('Unable to determine payer wallet for escrow');
@@ -342,9 +346,8 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
   let recipientIfTrue: string;
   let recipientIfFalse: string;
 
-  if (String(contract.deal_type) === 'service') {
-    const { provider } = resolveServiceRoles(contract, terms, agreedTerms);
-    recipientIfTrue = pickWallet(agreedTerms.provider_wallet, terms.provider_wallet, provider) || provider;
+  if (serviceRoles) {
+    recipientIfTrue = pickWallet(agreedTerms.provider_wallet, terms.provider_wallet, serviceRoles.provider) || serviceRoles.provider;
     recipientIfFalse = payerWallet;
   } else {
     const partyA = String(contract.party_a_wallet).toLowerCase();

@@ -655,9 +655,10 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
           </div>
         </div>
 
-        <footer className="border-t border-[var(--line)] bg-white/85 p-3 md:p-4">
-          {negotiation.status === 'active' ? (
-            <div className="space-y-3">
+        {negotiation.status !== 'waiting' ? (
+          <footer className="border-t border-[var(--line)] bg-white/85 p-3 md:p-4">
+            {negotiation.status === 'active' ? (
+              <div className="space-y-3">
               {termsDraft && termsHash ? (
                 <div className="space-y-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
@@ -719,23 +720,18 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
               </div>
 
               {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-            </div>
-          ) : negotiation.status === 'waiting' ? (
-            <InfoCallout
-              title="Waiting for the other party"
-              description="Share the invite above. Once they join, your chat controls will appear here."
-              tone="warning"
-            />
-          ) : negotiation.status === 'deal' ? (
-            <InfoCallout
-              title="Deal reached"
-              description="Agreement is confirmed. The contract view will update automatically."
-              tone="success"
-            />
-          ) : (
-            <InfoCallout title="Negotiation closed" description="No more messages can be sent for this room." tone="danger" />
-          )}
-        </footer>
+              </div>
+            ) : negotiation.status === 'deal' ? (
+              <InfoCallout
+                title="Deal reached"
+                description="Agreement is confirmed. The contract view will update automatically."
+                tone="success"
+              />
+            ) : (
+              <InfoCallout title="Negotiation closed" description="No more messages can be sent for this room." tone="danger" />
+            )}
+          </footer>
+        ) : null}
 
         {doneOpen ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-10">
