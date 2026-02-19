@@ -25,8 +25,8 @@ describe('MissionHeader', () => {
 
     render(<MissionHeader />);
 
-    expect(screen.getByRole('link', { name: 'Negotiation Room' })).toBeInTheDocument();
-    expect(screen.getByText('Private. Verifiable. No middleman.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Signet' })).toBeInTheDocument();
+    expect(screen.queryByText('Private. Verifiable. No middleman.')).not.toBeInTheDocument();
 
     const verifyLink = screen.getByRole('link', { name: 'Verify' });
     expect(verifyLink.className).toContain('shadow-[inset_0_-1px_0_0_var(--accent-gold)]');

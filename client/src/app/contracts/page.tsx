@@ -356,7 +356,7 @@ function ContractsWorkspace() {
             description={
               contracts.length === 0 && dealRetryCount < 8
                 ? 'Finalizing contract handoff. Fetching your latest agreement...'
-                : 'Your negotiation is now a contract. Open the highlighted contract and run the next action.'
+                : 'Your deal is now a contract. Open the highlighted contract and run the next action.'
             }
             tone="success"
           />
@@ -369,7 +369,7 @@ function ContractsWorkspace() {
             tone="info"
           >
             {verifyTarget ? (
-              <Link href={`/verify?id=${verifyTarget}`} className="button-secondary text-xs">
+              <Link href={`/verify?id=${verifyTarget}`} className="button-primary text-xs">
                 Open Verify Workspace
               </Link>
             ) : (
@@ -419,10 +419,10 @@ function ContractsWorkspace() {
       ) : contracts.length === 0 ? (
         <EmptyState
           title="No contracts yet"
-          description="Finish a negotiation to create your first contract."
+          description="Finish a deal room session to create your first contract."
           action={
             <Link href="/negotiate" className="button-primary text-sm">
-              Start Negotiation
+              Enter Deal Room
             </Link>
           }
         />

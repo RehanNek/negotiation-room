@@ -9,7 +9,7 @@ import { formatWallet } from '@/lib/formatters';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Overview' },
-  { href: '/negotiate', label: 'Negotiate' },
+  { href: '/negotiate', label: 'Deal Room' },
   { href: '/contracts', label: 'Contracts' },
   { href: '/profile', label: 'Profile' },
   { href: '/verify', label: 'Verify' },
@@ -66,18 +66,15 @@ export default function MissionHeader() {
 
   return (
     <header className="mission-header sticky top-0 z-40 border-b border-[var(--line)] bg-[color:var(--surface-1)]/90 backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 md:px-8 md:py-5">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 md:px-8 md:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col">
             <Link
               href="/"
               className="font-display text-3xl leading-none tracking-[0.09em] text-[var(--ink)] md:text-4xl lg:text-5xl"
             >
-              Negotiation Room
+              Signet
             </Link>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--accent-gold)]">
-              Private. Verifiable. No middleman.
-            </p>
           </div>
 
           <div className="flex items-center gap-2">

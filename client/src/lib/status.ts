@@ -17,9 +17,9 @@ export function negotiationStatusCopy(status: NegotiationStatus): StatusCopy {
     case 'deal':
       return { label: 'Deal Reached', tone: 'success', description: 'Done confirmed. Contract generation complete.' };
     case 'impasse':
-      return { label: 'Impasse', tone: 'danger', description: 'Negotiation closed without agreement.' };
+      return { label: 'Impasse', tone: 'danger', description: 'Deal room closed without agreement.' };
     case 'no_deal':
-      return { label: 'No Deal', tone: 'danger', description: 'A participant exited the negotiation.' };
+      return { label: 'No Deal', tone: 'danger', description: 'A participant exited the deal room.' };
     default:
       return { label: 'Unknown', tone: 'neutral', description: 'Status unavailable.' };
   }

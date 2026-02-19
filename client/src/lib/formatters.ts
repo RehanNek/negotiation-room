@@ -319,8 +319,8 @@ export function formatRelativeStatusHint(status: NegotiationStatus | ContractSta
     waiting: 'Awaiting the second party to join.',
     active: 'Live and accepting actions.',
     deal: 'Deal reached. Contract should now exist.',
-    impasse: 'Negotiation closed without agreement.',
-    no_deal: 'A participant exited the negotiation.',
+    impasse: 'Deal room closed without agreement.',
+    no_deal: 'A participant exited the deal room.',
     pending_resolution: 'Rule check required before final outcome.',
     resolved: 'Outcome recorded with attestation.',
   };

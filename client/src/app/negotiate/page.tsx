@@ -14,7 +14,7 @@ const FLOW_STEPS = [
   { id: 'identity', label: 'Identity', description: 'Connect a wallet and start a session.' },
   { id: 'path', label: 'Room', description: 'Create a new room or join an invite.' },
   { id: 'setup', label: 'Private Inputs', description: 'Add your private constraints (required).' },
-  { id: 'live', label: 'Chat', description: 'Negotiate privately and confirm terms.' },
+  { id: 'live', label: 'Deal Chat', description: 'Work through terms privately and confirm the deal.' },
 ] as const;
 
 type WizardStep = (typeof FLOW_STEPS)[number]['id'];
@@ -193,10 +193,10 @@ function NegotiateWorkspace() {
     }
 
     if (completion.status === 'impasse') {
-      setFinalNote('Negotiation reached impasse. You can start a new room or revise strategy and retry.');
+      setFinalNote('Deal room reached an impasse. You can start a new room or revise strategy and retry.');
     }
     if (completion.status === 'no_deal') {
-      setFinalNote('Negotiation closed without agreement. Start a new room when ready.');
+      setFinalNote('Deal room closed without agreement. Start a new room when ready.');
     }
   }
 
@@ -214,9 +214,9 @@ function NegotiateWorkspace() {
     <div className="space-y-4 md:space-y-6">
       <section className="card space-y-4 p-5 md:p-6">
         <div>
-          <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Negotiation Workspace</h1>
+          <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Deal Room Workspace</h1>
           <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-            Create a private room, negotiate directly with the counterparty, and record verifiable deal proof.
+            Create a private room, work directly with the counterparty, and record verifiable deal proof.
           </p>
         </div>
 
@@ -230,7 +230,7 @@ function NegotiateWorkspace() {
         <section className="card p-5 md:p-6">
           <h2 className="font-display text-3xl text-[var(--ink)]">Step 1: Establish Identity</h2>
           <p className="mt-2 text-sm text-[var(--muted-ink)]">
-            Use MetaMask for signature-backed identity before entering the private negotiation room.
+            Use MetaMask for signature-backed identity before entering the private deal room.
           </p>
           <div className="mt-4">
             <WalletConnect onConnect={handleConnect} address={wallet} />
@@ -252,7 +252,7 @@ function NegotiateWorkspace() {
             <article className="card space-y-4 p-5 md:p-6">
               <h3 className="font-display text-2xl text-[var(--ink)]">Create New Room</h3>
               <p className="text-sm text-[var(--muted-ink)]">
-                Start a private room and share the invite with someone you want to negotiate with.
+                Start a private room and share the invite with someone you want to make a deal with.
               </p>
               <button className="button-secondary w-full justify-center" type="button" onClick={() => selectPath('create_custom')}>
                 Create New Room
@@ -399,7 +399,7 @@ function NegotiateWorkspace() {
       {step === 'live' && wallet ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-3xl text-[var(--ink)]">Step 4: Live Negotiation</h2>
+            <h2 className="font-display text-3xl text-[var(--ink)]">Step 4: Live Deal Room</h2>
             <button
               type="button"
               onClick={() => {
@@ -411,7 +411,7 @@ function NegotiateWorkspace() {
               }}
               className="button-ghost text-sm"
             >
-              Start new negotiation
+              Start new deal room
             </button>
           </div>
 
@@ -424,7 +424,7 @@ function NegotiateWorkspace() {
 
 export default function NegotiatePage() {
   return (
-    <Suspense fallback={<section className="card p-6 text-sm text-[var(--muted-ink)]">Loading negotiation workspace...</section>}>
+    <Suspense fallback={<section className="card p-6 text-sm text-[var(--muted-ink)]">Loading deal room workspace...</section>}>
       <NegotiateWorkspace />
     </Suspense>
   );

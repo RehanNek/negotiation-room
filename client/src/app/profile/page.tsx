@@ -63,7 +63,7 @@ export default function ProfilePage() {
           <div>
             <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Reputation Ledger</h1>
             <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-              Track negotiation behavior, resolution quality, and verifiable history tied to your wallet identity.
+              Track deal-room behavior, resolution quality, and verifiable history tied to your wallet identity.
             </p>
           </div>
           <WalletConnect onConnect={handleConnect} address={wallet} compact />
@@ -85,7 +85,7 @@ export default function ProfilePage() {
             <ReputationBadge score={reputation.total_reputation} goodFaith={reputation.good_faith_score} deals={reputation.deals_completed} />
 
             <article className="card p-4 md:p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Total Negotiations</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Total Deal Rooms</p>
               <p className="mt-2 font-display text-4xl text-[var(--ink)]">{reputation.total_negotiations}</p>
             </article>
 
@@ -112,7 +112,7 @@ export default function ProfilePage() {
               <details className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] p-3">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Technical scoring interpretation</summary>
                 <p className="mt-2 text-sm text-[var(--muted-ink)]">
-                  Reputation captures negotiated outcomes, chat efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
+                  Reputation captures deal outcomes, chat efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
                   anchored by attested process records.
                 </p>
               </details>

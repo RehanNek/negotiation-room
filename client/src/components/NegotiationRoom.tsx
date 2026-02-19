@@ -101,11 +101,11 @@ function orientSuggestionForRole(text: string, role: 'A' | 'B'): string {
 function normalizeSuggestionText(input: unknown): string {
   if (typeof input === 'string') {
     const cleaned = input.trim();
-    return cleaned || 'No suggestion generated for this negotiation.';
+    return cleaned || 'No suggestion generated for this deal room.';
   }
 
   if (!input || typeof input !== 'object') {
-    return 'No suggestion generated for this negotiation.';
+    return 'No suggestion generated for this deal room.';
   }
 
   const record = input as Record<string, unknown>;
@@ -114,7 +114,7 @@ function normalizeSuggestionText(input: unknown): string {
   ) as string | undefined;
 
   if (nested) return nested.trim();
-  return 'No suggestion generated for this negotiation.';
+  return 'No suggestion generated for this deal room.';
 }
 
 function loadStoredPrivateInputs(negotiationId: string, walletAddress: string): Record<string, unknown> {
@@ -304,7 +304,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
 
   const inviteMessage = useMemo(
     () => [
-      'Join my private negotiation room.',
+      'Join my private deal room.',
       '',
       `Room code: ${negotiationId}`,
       `Join link: ${inviteLink}`,
@@ -351,7 +351,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
       try {
         await navigator.share({
-          title: 'Join my negotiation room',
+          title: 'Join my deal room',
           text: inviteMessage,
           url: inviteLink,
         });
@@ -433,7 +433,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
       await poll();
       notifyCompletion('deal', result.contract?.id);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to finalize negotiation';
+      const message = err instanceof Error ? err.message : 'Failed to finalize deal room';
       setDoneError(message);
     } finally {
       setMarkingDone(false);
@@ -452,7 +452,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   }
 
   if (!negotiation || !statusCopy) {
-    return <div className="card animate-pulse p-5 text-sm text-[var(--muted-ink)]">Loading negotiation room...</div>;
+    return <div className="card animate-pulse p-5 text-sm text-[var(--muted-ink)]">Loading deal room...</div>;
   }
 
   const canSendMessage = negotiation.status === 'active';
@@ -531,7 +531,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
               <p className="text-xs text-[var(--muted-ink)]">
                 You ({formatWallet(walletAddress)}) chatting with {counterpartyLabel}
               </p>
-              <p className="text-xs text-[var(--muted-ink)]">{negotiation.deal_type} contract negotiation</p>
+              <p className="text-xs text-[var(--muted-ink)]">{negotiation.deal_type} contract deal room</p>
             </div>
           </div>
           <StatusPill label={statusCopy.label} tone={statusCopy.tone} pulse={negotiation.status === 'active'} />
@@ -682,7 +682,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                 <textarea
                   value={offer}
                   onChange={(event) => setOffer(event.target.value)}
-                  placeholder="Write your negotiation message..."
+                  placeholder="Write your deal message..."
                   className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-3)] p-3 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent-gold)]"
                 />
                 <button
@@ -728,7 +728,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                 tone="success"
               />
             ) : (
-              <InfoCallout title="Negotiation closed" description="No more messages can be sent for this room." tone="danger" />
+              <InfoCallout title="Deal room closed" description="No more messages can be sent for this room." tone="danger" />
             )}
           </footer>
         ) : null}
@@ -840,7 +840,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         <InfoCallout title="Current State" description={statusCopy.description} tone={statusCopy.tone} />
 
         {suggestion?.suggestion ? (
-          <InfoCallout title="AI Negotiation Hint (next move)" description={suggestion.suggestion} tone="info">
+          <InfoCallout title="AI Deal Hint (next move)" description={suggestion.suggestion} tone="info">
             <OfferTermsView terms={suggestion.suggested_terms} title="Suggested Terms" compact />
           </InfoCallout>
         ) : null}

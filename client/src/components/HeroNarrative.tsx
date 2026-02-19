@@ -9,15 +9,15 @@ export default function HeroNarrative() {
       <div className="pointer-events-none absolute -bottom-32 left-12 h-80 w-80 rounded-full bg-[var(--accent-gold-strong)]/6 blur-3xl" />
 
       <div className="relative space-y-10">
-        <div className="max-w-4xl space-y-5">
+        <div className="max-w-5xl space-y-5">
           <h1 className="font-display text-4xl leading-tight tracking-wide text-[var(--ink)] md:text-6xl">
-            A private and verifiable negotiation room where parties reach agreement without a middleman.
+            A private and verifiable deal room.
           </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           <Link href="/negotiate" className="button-primary">
-            Start Negotiation
+            Enter Deal Room
           </Link>
         </div>
       </div>
