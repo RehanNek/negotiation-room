@@ -85,17 +85,17 @@ export default function ProfilePage() {
             <ReputationBadge score={reputation.total_reputation} goodFaith={reputation.good_faith_score} deals={reputation.deals_completed} />
 
             <article className="card p-4 md:p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Total Deal Rooms</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink)]">Total Deal Rooms</p>
               <p className="mt-2 font-display text-4xl text-[var(--ink)]">{reputation.total_negotiations}</p>
             </article>
 
             <article className="card p-4 md:p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Pending Resolutions</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink)]">Pending Resolutions</p>
               <p className="mt-2 font-display text-4xl text-[var(--ink)]">{summary.pending}</p>
             </article>
 
             <article className="card p-4 md:p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolved Contracts</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--ink)]">Resolved Contracts</p>
               <p className="mt-2 font-display text-4xl text-[var(--ink)]">{summary.resolved}</p>
             </article>
           </section>

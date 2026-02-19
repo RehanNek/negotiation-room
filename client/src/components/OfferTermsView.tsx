@@ -31,7 +31,7 @@ export default function OfferTermsView({ terms, title = 'Terms', compact = false
   return (
     <div className={`rounded-2xl border border-[var(--line)] bg-[color:color-mix(in_srgb,var(--surface-2),#000000_20%)] ${compact ? 'p-3' : 'p-4'}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">{title}</h4>
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--ink)]">{title}</h4>
         <button
           onClick={() => setShowRaw((value) => !value)}
           className="rounded-full border border-[var(--line)] px-2 py-1 text-[11px] font-medium text-[var(--muted-ink)] transition hover:border-[var(--line-strong)] hover:text-[var(--ink)]"

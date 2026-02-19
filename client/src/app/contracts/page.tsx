@@ -430,7 +430,7 @@ function ContractsWorkspace() {
         <>
           {pending.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Needs Action ({pending.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--ink)]">Needs Action ({pending.length})</h2>
               <div className="space-y-3">
                 {pending.map((contract) => (
                   <ContractQueueCard
@@ -451,7 +451,7 @@ function ContractsWorkspace() {
 
           {active.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Active ({active.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--ink)]">Active ({active.length})</h2>
               <div className="space-y-3">
                 {active.map((contract) => (
                   <ContractQueueCard
@@ -472,7 +472,7 @@ function ContractsWorkspace() {
 
           {resolved.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Resolved ({resolved.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--ink)]">Resolved ({resolved.length})</h2>
               <div className="space-y-3">
                 {resolved.map((contract) => (
                   <ContractQueueCard

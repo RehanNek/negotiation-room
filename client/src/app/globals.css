@@ -38,12 +38,12 @@ body {
 }
 
 a {
-  color: color-mix(in srgb, var(--accent-gold), #ffffff 8%);
+  color: var(--ink);
   transition: color 200ms ease-out;
 }
 
 a:hover {
-  color: color-mix(in srgb, var(--accent-gold-strong), #ffffff 12%);
+  color: var(--accent-gold);
 }
 
 .app-shell {

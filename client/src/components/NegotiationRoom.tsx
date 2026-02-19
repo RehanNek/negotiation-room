@@ -539,7 +539,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
 
         {negotiation.status === 'waiting' ? (
           <div className="border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-4 md:px-5">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Share Invite</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--ink)]">Share Invite</h3>
             <p className="mt-1 text-sm text-[var(--ink)]">
               Send this private room invite by email or message. The link includes the room code.
             </p>
