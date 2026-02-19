@@ -328,7 +328,13 @@ function ContractsWorkspace() {
   const active = contracts.filter((contract) => contract.status === 'active');
   const resolved = contracts.filter((contract) => contract.status === 'resolved');
   const focusedContract = focus ? contracts.find((contract) => contract.id === focus) || null : null;
-  const verifyTarget = focusedContract?.escrow?.attestation_id || focusedContract?.attestation_id || null;
+  const verifyTarget = focusedContract
+    ? (
+        focusedContract.status === 'resolved'
+          ? (focusedContract.attestation_id || focusedContract.escrow?.attestation_id || null)
+          : (focusedContract.escrow?.attestation_id || focusedContract.attestation_id || null)
+      )
+    : null;
 
   return (
     <div className="space-y-4 md:space-y-6">
