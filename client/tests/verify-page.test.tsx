@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { privateKeyToAccount } from 'viem/accounts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VerifyPage from '@/app/verify/page';
@@ -106,6 +107,7 @@ describe('Verify page', () => {
   });
 
   it('renders proof valid from browser-local verification', async () => {
+    const user = userEvent.setup();
     currentSearchParams = new URLSearchParams('id=attest-123');
     mockedApi.getAttestation.mockResolvedValue(await makeSignedRecord());
     mockedApi.getContract.mockResolvedValue({
@@ -120,6 +122,10 @@ describe('Verify page', () => {
 
     await screen.findByText('Proof Valid');
     expect(mockedApi.getAttestation).toHaveBeenCalledWith('attest-123');
+    await user.click(screen.getByRole('button', { name: 'Show Technical Details' }));
+    expect(screen.getByText('Raw payload (technical audit view)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Hide Technical Details' }));
+    expect(screen.queryByText('Raw payload (technical audit view)')).not.toBeInTheDocument();
   });
 
   it('renders proof invalid when signature checks fail after contract-id fallback', async () => {

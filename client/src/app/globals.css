@@ -1,18 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --ink: #1d2324;
-  --muted-ink: #556364;
-  --surface-1: #f7f2e9;
-  --surface-2: #f0e8db;
-  --surface-3: #e7dcc9;
-  --line: #d8ccb8;
-  --line-strong: #bca788;
-  --accent-teal: #0f7f8f;
-  --accent-copper: #b96f3d;
-  --success: #208056;
-  --warning: #9a6f2f;
-  --danger: #9e3d3d;
+  --ink: #f5f0eb;
+  --muted-ink: #b9aea2;
+  --surface-1: #0a0a0a;
+  --surface-2: #1a1a1a;
+  --surface-3: #242424;
+  --line: #3a342e;
+  --line-strong: #5a5147;
+  --accent-gold: #c9a96e;
+  --accent-gold-strong: #d4af37;
+  --bg-linen: rgba(245, 240, 235, 0.016);
+  --bg-vignette: rgba(0, 0, 0, 0.62);
+  --focus-ring: #c9a96e8f;
+  --success: #8fbfa2;
+  --warning: #d0a86b;
+  --danger: #c07d7d;
+  /* Backwards-compatible aliases for existing component references. */
+  --accent-teal: var(--accent-gold);
+  --accent-copper: var(--accent-gold-strong);
 }
 
 * {
@@ -23,7 +29,9 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: var(--font-sans), sans-serif;
-  background: linear-gradient(170deg, #faf6ee 0%, #f6efe4 50%, #efe6d8 100%);
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(212, 175, 55, 0.11), transparent 58%),
+    linear-gradient(165deg, #060606 0%, #0b0b0b 50%, #111111 100%);
 }
 
 .app-shell {
@@ -36,9 +44,9 @@ body {
   inset: 0;
   z-index: -2;
   background-image:
-    radial-gradient(circle at 12% 20%, color-mix(in srgb, var(--accent-teal), transparent 90%), transparent 48%),
-    radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--accent-copper), transparent 88%), transparent 44%),
-    radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--accent-teal), transparent 93%), transparent 55%);
+    radial-gradient(circle at 9% 16%, rgba(212, 175, 55, 0.1), transparent 42%),
+    radial-gradient(circle at 84% 12%, rgba(201, 169, 110, 0.08), transparent 37%),
+    linear-gradient(180deg, transparent 0%, var(--bg-vignette) 100%);
   pointer-events: none;
 }
 
@@ -49,10 +57,12 @@ body {
   z-index: -1;
   pointer-events: none;
   background-image:
-    linear-gradient(to right, rgba(28, 35, 36, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(28, 35, 36, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0.35;
+    linear-gradient(to right, var(--bg-linen) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bg-linen) 1px, transparent 1px),
+    radial-gradient(circle at 30% 20%, rgba(245, 240, 235, 0.028) 0 0.8px, transparent 1px),
+    radial-gradient(circle at 60% 75%, rgba(245, 240, 235, 0.022) 0 0.7px, transparent 1px);
+  background-size: 34px 34px, 34px 34px, 4px 4px, 5px 5px;
+  opacity: 0.52;
 }
 
 .font-display {
@@ -60,12 +70,30 @@ body {
 }
 
 .card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 1.25rem;
-  background: color-mix(in srgb, #ffffff 82%, var(--surface-1));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-2), #ffffff 2%),
+    color-mix(in srgb, var(--surface-1), #000000 22%)
+  );
   box-shadow:
-    0 1px 0 rgba(40, 28, 17, 0.03),
-    0 10px 35px rgba(40, 28, 17, 0.06);
+    inset 0 1px 0 rgba(245, 240, 235, 0.03),
+    0 18px 40px rgba(0, 0, 0, 0.42);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  left: 1.1rem;
+  right: 1.1rem;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-gold), #ffffff 12%), transparent);
+  opacity: 0.76;
+  pointer-events: none;
 }
 
 .button-primary,
@@ -80,18 +108,21 @@ body {
   font-size: 0.88rem;
   font-weight: 600;
   line-height: 1;
-  transition: all 160ms ease;
+  transition: all 180ms ease-out;
 }
 
 .button-primary {
-  border: 1px solid color-mix(in srgb, var(--accent-teal), #000000 20%);
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-teal), #ffffff 6%), color-mix(in srgb, var(--accent-teal), #000000 10%));
-  color: #f7faf9;
+  border: 1px solid color-mix(in srgb, var(--accent-gold), #000000 35%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-gold), #111111 20%), color-mix(in srgb, var(--surface-2), #000000 14%));
+  color: var(--ink);
 }
 
 .button-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(15, 127, 143, 0.2);
+  border-color: color-mix(in srgb, var(--accent-gold-strong), #ffffff 5%);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(245, 240, 235, 0.06);
 }
 
 .button-primary:disabled {
@@ -103,13 +134,13 @@ body {
 
 .button-secondary {
   border: 1px solid var(--line-strong);
-  background: #fffef9;
+  background: color-mix(in srgb, var(--surface-3), #000000 12%);
   color: var(--ink);
 }
 
 .button-secondary:hover {
-  border-color: var(--ink);
-  background: #ffffff;
+  border-color: var(--accent-gold);
+  background: color-mix(in srgb, var(--surface-2), #000000 22%);
 }
 
 .button-secondary:disabled {
@@ -125,12 +156,30 @@ body {
 
 .button-ghost:hover {
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.55);
+  background: color-mix(in srgb, var(--surface-3), #000000 20%);
   color: var(--ink);
 }
 
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+input,
+select,
+textarea {
+  color: var(--ink);
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--surface-3), #000000 18%);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in srgb, var(--muted-ink), #000000 12%);
+}
+
 .page-reveal {
-  animation: fade-up 320ms ease both;
+  animation: fade-up 420ms ease-out both;
 }
 
 @keyframes fade-up {
@@ -151,6 +200,6 @@ code {
 
 @media (max-width: 768px) {
   .mission-header {
-    box-shadow: 0 1px 0 rgba(40, 28, 17, 0.07);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
   }
 }

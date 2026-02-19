@@ -204,7 +204,7 @@ function VerifyWorkspace() {
             value={attestationId}
             onChange={(event) => setAttestationId(event.target.value)}
             placeholder="Paste proof id or contract id"
-            className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 font-mono text-sm text-[var(--ink)]"
+            className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 font-mono text-sm text-[var(--ink)]"
           />
           <button className="button-primary" onClick={() => void verify()} disabled={loading || !attestationId.trim()} type="button">
             {loading ? 'Checking...' : 'Check Proof'}
@@ -287,7 +287,7 @@ function VerifyWorkspace() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-[var(--line)] bg-white/75 p-3">
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">
                     Raw payload (technical audit view)
                   </p>

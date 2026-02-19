@@ -284,7 +284,7 @@ function NegotiateWorkspace() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Deal Type</span>
-              <select value={dealType} onChange={(event) => setDealType(event.target.value as DealType)} className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
+              <select value={dealType} onChange={(event) => setDealType(event.target.value as DealType)} className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]">
                 <option value="service">Service Contract</option>
                 <option value="conditional">Conditional Contract</option>
               </select>
@@ -296,7 +296,7 @@ function NegotiateWorkspace() {
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
                 placeholder="e.g. ai-consulting, data-labeling, btc-bet"
-                className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
               />
             </label>
 
@@ -308,13 +308,13 @@ function NegotiateWorkspace() {
                     value={condition}
                     onChange={(event) => setCondition(event.target.value)}
                     placeholder="Bitcoin closes above 100000 USD by date"
-                    className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
 
                 <label className="space-y-1">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Data Source</span>
-                  <select value={dataSource} onChange={(event) => setDataSource(event.target.value)} className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
+                  <select value={dataSource} onChange={(event) => setDataSource(event.target.value)} className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]">
                     <option value="coingecko">CoinGecko</option>
                     <option value="news">News Feed</option>
                   </select>
@@ -326,7 +326,7 @@ function NegotiateWorkspace() {
                     type="date"
                     value={resolutionDate}
                     onChange={(event) => setResolutionDate(event.target.value)}
-                    className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
               </>
@@ -338,7 +338,7 @@ function NegotiateWorkspace() {
                 value={constraints}
                 onChange={(event) => setConstraints(event.target.value)}
                 rows={3}
-                className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                 placeholder='Only you can see this. Example: {"max_price_usd": 500, "deadline": "2026-03-01"} or "I will not pay more than $500."'
               />
             </label>
@@ -370,7 +370,7 @@ function NegotiateWorkspace() {
               value={joinRoomId}
               onChange={(event) => setJoinRoomId(event.target.value)}
               placeholder="Paste room id"
-              className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 font-mono text-sm text-[var(--ink)]"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 font-mono text-sm text-[var(--ink)]"
             />
           </label>
 
@@ -380,7 +380,7 @@ function NegotiateWorkspace() {
               value={joinConstraints}
               onChange={(event) => setJoinConstraints(event.target.value)}
               rows={3}
-              className="w-full rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
               placeholder='Only you can see this. Example: {"target_price_usd": 250} or "I can do this in 5 days."'
             />
           </label>

@@ -521,7 +521,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
   return (
     <section className="grid gap-4 lg:grid-cols-[1.75fr_1fr]">
       <article className="card overflow-hidden p-0">
-        <header className="flex items-start justify-between gap-3 border-b border-[var(--line)] bg-white/80 px-4 py-3 md:px-5">
+        <header className="flex items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--surface-2)] px-4 py-3 md:px-5">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--surface-2)] text-sm font-semibold text-[var(--ink)]">
               {counterpartyWallet ? 'C' : '?'}
@@ -545,7 +545,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
             </p>
 
             <div className="mt-3 space-y-2">
-              <div className="rounded-lg border border-[var(--line)] bg-white/80 px-3 py-2">
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
                 <p className="text-[11px] uppercase tracking-wide text-[var(--muted-ink)]">Room Code</p>
                 <code className="font-mono text-sm text-[var(--ink)]">{negotiationId}</code>
               </div>
@@ -554,7 +554,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                 <input
                   readOnly
                   value={inviteLink}
-                  className="mt-1 w-full rounded-lg border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]"
+                  className="mt-1 w-full rounded-lg border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   onFocus={(event) => event.currentTarget.select()}
                 />
               </label>
@@ -582,14 +582,14 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
           <div className="relative max-h-[62vh] overflow-y-auto px-3 py-4 md:px-4 md:py-5">
             <div className="space-y-3">
               <div className="flex justify-center">
-                <p className="rounded-full border border-[var(--line)] bg-white/85 px-3 py-1 text-[11px] text-[var(--muted-ink)]">
+                <p className="rounded-full border border-[var(--line)] bg-[var(--surface-3)] px-3 py-1 text-[11px] text-[var(--muted-ink)]">
                   Private deal channel active
                 </p>
               </div>
 
               {negotiation.rounds.length === 0 ? (
                 <div className="flex justify-center">
-                  <p className="rounded-2xl border border-[var(--line)] bg-white/85 px-4 py-2 text-sm text-[var(--muted-ink)]">
+                  <p className="rounded-2xl border border-[var(--line)] bg-[var(--surface-3)] px-4 py-2 text-sm text-[var(--muted-ink)]">
                     {negotiation.status === 'waiting'
                       ? 'Waiting for the other party to join. Once they join, you can start chatting here.'
                       : 'No messages yet. Send the opening message.'}
@@ -609,7 +609,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                           className={`rounded-2xl border px-4 py-2 shadow-sm ${
                             mine
                               ? 'rounded-br-md border-[var(--ink)] bg-[var(--ink)] text-[var(--surface-1)]'
-                              : 'rounded-bl-md border-[var(--line)] bg-white text-[var(--ink)]'
+                              : 'rounded-bl-md border-[var(--line)] bg-[var(--surface-3)] text-[var(--ink)]'
                           }`}
                         >
                           <p className="whitespace-pre-wrap text-sm leading-relaxed">{bubbleMessage}</p>
@@ -636,7 +636,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
 
               {negotiation.status === 'deal' ? (
                 <div className="flex justify-center">
-                  <p className="rounded-full border border-[color:color-mix(in srgb,var(--success),#ffffff 40%)] bg-[color:color-mix(in srgb,var(--success),#ffffff 92%)] px-3 py-1 text-[11px] text-[var(--ink)]">
+                  <p className="rounded-full border border-[color:color-mix(in_srgb,var(--success),#000000_40%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--success)_18%)] px-3 py-1 text-[11px] text-[var(--ink)]">
                     Deal agreed. Terms recorded.
                   </p>
                 </div>
@@ -644,7 +644,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
 
               {negotiation.status === 'impasse' || negotiation.status === 'no_deal' ? (
                 <div className="flex justify-center">
-                  <p className="rounded-full border border-[color:color-mix(in srgb,var(--danger),#ffffff 45%)] bg-[color:color-mix(in srgb,var(--danger),#ffffff 94%)] px-3 py-1 text-[11px] text-[var(--ink)]">
+                  <p className="rounded-full border border-[color:color-mix(in_srgb,var(--danger),#000000_42%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--danger)_16%)] px-3 py-1 text-[11px] text-[var(--ink)]">
                     Conversation closed.
                   </p>
                 </div>
@@ -656,7 +656,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         </div>
 
         {negotiation.status !== 'waiting' ? (
-          <footer className="border-t border-[var(--line)] bg-white/85 p-3 md:p-4">
+          <footer className="border-t border-[var(--line)] bg-[var(--surface-2)] p-3 md:p-4">
             {negotiation.status === 'active' ? (
               <div className="space-y-3">
               {termsDraft && termsHash ? (
@@ -666,11 +666,11 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                   </p>
                   <OfferTermsView terms={termsDraft} compact title="Draft agreement" />
                   <div className="grid gap-2 text-xs md:grid-cols-2">
-                    <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
+                    <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-[var(--ink)]">
                       {isSelfNegotiation ? 'You (side A):' : `${role === 'A' ? 'You' : 'Counterparty'} (side A):`}{' '}
                       <span className="font-semibold">{partyAConfirmed ? 'Confirmed' : 'Pending'}</span>
                     </p>
-                    <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-[var(--ink)]">
+                    <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-[var(--ink)]">
                       {isSelfNegotiation ? 'You (side B):' : `${role === 'B' ? 'You' : 'Counterparty'} (side B):`}{' '}
                       <span className="font-semibold">{partyBConfirmed ? 'Confirmed' : 'Pending'}</span>
                     </p>
@@ -683,7 +683,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                   value={offer}
                   onChange={(event) => setOffer(event.target.value)}
                   placeholder="Write your negotiation message..."
-                  className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-white p-3 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--line-strong)]"
+                  className="min-h-[84px] w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-3)] p-3 text-sm text-[var(--ink)] outline-none transition focus:border-[var(--accent-gold)]"
                 />
                 <button
                   type="button"
@@ -765,7 +765,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                     onChange={(event) => setDoneAmountEth(event.target.value)}
                     placeholder="0.01"
                     inputMode="decimal"
-                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
 
@@ -777,7 +777,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                     value={doneTimeline}
                     onChange={(event) => setDoneTimeline(event.target.value)}
                     placeholder="e.g. 5 days, Feb 20 to Feb 23"
-                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
 
@@ -790,7 +790,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                     onChange={(event) => setDoneDeliverables(event.target.value)}
                     rows={2}
                     placeholder="e.g. 3 recorded lessons, 10 labeled images"
-                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
 
@@ -803,7 +803,7 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
                     onChange={(event) => setDoneNotes(event.target.value)}
                     rows={2}
                     placeholder="Anything else you want recorded in the agreement."
-                    className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]"
+                    className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
                   />
                 </label>
               </div>

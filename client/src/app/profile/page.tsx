@@ -109,7 +109,7 @@ export default function ProfilePage() {
                 <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">Last Updated: {formatTimestamp(reputation.last_updated)}</p>
               </div>
 
-              <details className="rounded-xl border border-[var(--line)] bg-white/70 p-3">
+              <details className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] p-3">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--ink)]">Technical scoring interpretation</summary>
                 <p className="mt-2 text-sm text-[var(--muted-ink)]">
                   Reputation captures negotiated outcomes, chat efficiency, and good-faith behavior. It is not a legal guarantee, but a historical signal
@@ -124,7 +124,7 @@ export default function ProfilePage() {
               ) : (
                 <div className="space-y-2">
                   {recentContracts.map((contract) => (
-                    <div key={contract.id} className="rounded-xl border border-[var(--line)] bg-white/75 p-3">
+                    <div key={contract.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-ink)]">
                         <span className="uppercase tracking-wide">{contract.deal_type}</span>
                         <span>{contract.status}</span>

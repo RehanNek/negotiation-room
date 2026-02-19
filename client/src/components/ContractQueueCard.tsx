@@ -182,7 +182,7 @@ export default function ContractQueueCard({
   return (
     <article
       id={`contract-${contract.id}`}
-      className={`card scroll-mt-28 p-5 transition md:p-6 ${highlighted ? 'ring-2 ring-[var(--accent-copper)] shadow-[0_0_0_8px_color-mix(in_srgb,var(--accent-copper),transparent_86%)]' : ''}`}
+      className={`card scroll-mt-28 p-5 transition md:p-6 ${highlighted ? 'ring-2 ring-[var(--accent-gold)] shadow-[0_0_0_8px_color-mix(in_srgb,var(--accent-gold),transparent_88%)]' : ''}`}
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
@@ -203,7 +203,7 @@ export default function ContractQueueCard({
 
       <p className="mb-4 text-sm leading-relaxed text-[var(--ink)] md:text-base">{readableSummary}</p>
 
-      <div className="mb-4 grid gap-2 rounded-2xl border border-[var(--line)] bg-white/70 p-3 text-xs text-[var(--muted-ink)] md:grid-cols-2">
+      <div className="mb-4 grid gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-3)] p-3 text-xs text-[var(--muted-ink)] md:grid-cols-2">
         <p>
           {isService ? 'Receives Service' : 'Party A'}:{' '}
           <span className="font-mono text-[var(--ink)]">{formatWallet(receiverWallet)}</span>
@@ -220,20 +220,20 @@ export default function ContractQueueCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Escrow Status</p>
         <p className="mt-1 text-sm text-[var(--ink)]">{escrowStatusCopy(escrow?.status, escrowEnabled)}</p>
         <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
-          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Payer: <span className="font-mono text-[var(--ink)]">{formatWallet(payerWallet)}</span>
           </p>
-          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Release to provider: <span className="font-mono text-[var(--ink)]">{formatWallet(releaseRecipientWallet)}</span>
           </p>
-          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Refund back to payer: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
           </p>
-          <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>
           </p>
           {escrow?.fund_tx_hash ? (
-            <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 md:col-span-2">
+            <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 md:col-span-2">
               Funding tx:{' '}
               <a
                 href={`${EXPLORER_TX_BASE}${escrow.fund_tx_hash}`}
@@ -246,7 +246,7 @@ export default function ContractQueueCard({
             </p>
           ) : null}
           {settlementTxHash ? (
-            <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 md:col-span-2">
+            <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 md:col-span-2">
               Settlement tx:{' '}
               <a
                 href={`${EXPLORER_TX_BASE}${settlementTxHash}`}
@@ -265,7 +265,7 @@ export default function ContractQueueCard({
       </div>
 
       {missingTerms.length > 0 ? (
-        <div className="mt-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--warning),#ffffff_45%)] bg-[color:color-mix(in_srgb,var(--warning),#ffffff_92%)] p-3">
+        <div className="mt-4 rounded-2xl border border-[color:color-mix(in_srgb,var(--warning),#000000_42%)] bg-[color:color-mix(in_srgb,var(--surface-2),var(--warning)_15%)] p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Missing Or Unclear Terms</p>
           <p className="mt-1 text-sm text-[var(--ink)]">
             {missingTerms.map((term) => formatMissingTermLabel(term)).join(', ')}

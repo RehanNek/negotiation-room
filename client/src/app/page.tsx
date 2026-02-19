@@ -31,10 +31,10 @@ export default function HomePage() {
   }, [wallet]);
 
   return (
-    <div className="space-y-6 md:space-y-8">
+    <div className="space-y-7 md:space-y-10">
       <HeroNarrative />
 
-      <section className="grid gap-4 md:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-4 md:gap-5 md:grid-cols-[1.2fr_1fr]">
         <EvidencePanel
           title="Privacy Layer"
           subtitle="Connect with a wallet and negotiate with private constraints that are not exposed to counterparties or platform operators."
@@ -55,7 +55,7 @@ export default function HomePage() {
         )}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-[1.35fr_1fr]">
+      <section className="grid gap-4 md:gap-5 md:grid-cols-[1.35fr_1fr]">
         <EvidencePanel title="Verifiability Layer" subtitle="Judges can inspect end-to-end evidence without trusting a platform intermediary.">
           <ul className="space-y-2 text-sm text-[var(--muted-ink)]">
             <li>• Deal state is recorded with verifiable contract snapshots.</li>
@@ -69,7 +69,8 @@ export default function HomePage() {
           </div>
         </EvidencePanel>
 
-        <article className="card p-5 md:p-6">
+        <article className="card relative p-5 md:p-6">
+          <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent-gold)]/70 to-transparent" />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted-ink)]">No-Middleman Guarantee</h3>
           <ul className="mt-3 space-y-2 text-sm text-[var(--muted-ink)]">
             <li>• Any two parties can negotiate under shared rules.</li>

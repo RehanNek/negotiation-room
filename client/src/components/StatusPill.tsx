@@ -8,10 +8,10 @@ interface StatusPillProps {
 
 const TONE_CLASS: Record<Tone, string> = {
   neutral: 'border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-ink)]',
-  info: 'border-[color:color-mix(in srgb,var(--accent-teal),#ffffff 50%)] bg-[color:color-mix(in srgb,var(--accent-teal),#ffffff 86%)] text-[color:color-mix(in srgb,var(--accent-teal),#000000 35%)]',
-  success: 'border-[color:color-mix(in srgb,var(--success),#ffffff 40%)] bg-[color:color-mix(in srgb,var(--success),#ffffff 86%)] text-[color:color-mix(in srgb,var(--success),#000000 35%)]',
-  warning: 'border-[color:color-mix(in srgb,var(--warning),#ffffff 40%)] bg-[color:color-mix(in srgb,var(--warning),#ffffff 86%)] text-[color:color-mix(in srgb,var(--warning),#000000 25%)]',
-  danger: 'border-[color:color-mix(in srgb,var(--danger),#ffffff 45%)] bg-[color:color-mix(in srgb,var(--danger),#ffffff 88%)] text-[color:color-mix(in srgb,var(--danger),#000000 30%)]',
+  info: 'border-[color:color-mix(in_srgb,var(--accent-gold),#000000_42%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--accent-gold)_12%)] text-[var(--ink)]',
+  success: 'border-[color:color-mix(in_srgb,var(--success),#000000_42%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--success)_16%)] text-[var(--ink)]',
+  warning: 'border-[color:color-mix(in_srgb,var(--warning),#000000_45%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--warning)_14%)] text-[var(--ink)]',
+  danger: 'border-[color:color-mix(in_srgb,var(--danger),#000000_42%)] bg-[color:color-mix(in_srgb,var(--surface-3),var(--danger)_16%)] text-[var(--ink)]',
 };
 
 export default function StatusPill({ label, tone, pulse = false }: StatusPillProps) {

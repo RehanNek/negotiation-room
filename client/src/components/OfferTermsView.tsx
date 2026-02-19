@@ -29,7 +29,7 @@ export default function OfferTermsView({ terms, title = 'Terms', compact = false
   const hasObjectEntries = isObjectPayload && Object.keys(displayTerms as Record<string, unknown>).length > 0;
 
   return (
-    <div className={`rounded-2xl border border-[var(--line)] bg-white/65 ${compact ? 'p-3' : 'p-4'}`}>
+    <div className={`rounded-2xl border border-[var(--line)] bg-[color:color-mix(in_srgb,var(--surface-2),#000000_20%)] ${compact ? 'p-3' : 'p-4'}`}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">{title}</h4>
         <button
@@ -48,14 +48,14 @@ export default function OfferTermsView({ terms, title = 'Terms', compact = false
       ) : summaries.length > 0 ? (
         <dl className="grid gap-2 text-sm md:grid-cols-2">
           {summaries.map((item) => (
-            <div key={item.key} className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2">
+            <div key={item.key} className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
               <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted-ink)]">{item.label}</dt>
               <dd className="mt-0.5 text-sm font-medium text-[var(--ink)]">{item.value}</dd>
             </div>
           ))}
         </dl>
       ) : isObjectPayload && !hasObjectEntries ? (
-        <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--muted-ink)]">
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--muted-ink)]">
           No structured terms provided yet.
         </p>
       ) : isObjectPayload ? (
@@ -63,7 +63,7 @@ export default function OfferTermsView({ terms, title = 'Terms', compact = false
           {stringifyRaw(normalized)}
         </pre>
       ) : (
-        <p className="rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm text-[var(--ink)]">
+        <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]">
           {typeof displayTerms === 'string' && displayTerms.trim() ? displayTerms : 'No structured terms provided yet.'}
         </p>
       )}

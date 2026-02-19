@@ -65,24 +65,27 @@ export default function MissionHeader() {
   }, [pathname]);
 
   return (
-    <header className="mission-header sticky top-0 z-40 border-b border-[var(--line)] bg-[color:var(--surface-1)]/90 backdrop-blur">
+    <header className="mission-header sticky top-0 z-40 border-b border-[var(--line)] bg-[color:var(--surface-1)]/88 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-4 md:px-8 md:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col">
-            <Link href="/" className="font-display text-3xl leading-none tracking-tight text-[var(--ink)] md:text-4xl lg:text-5xl">
+            <Link
+              href="/"
+              className="font-display text-3xl leading-none tracking-[0.08em] text-[var(--ink)] md:text-4xl lg:text-5xl"
+            >
               Negotiation Room
             </Link>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--muted-ink)]">
+            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.22em] text-[var(--accent-gold)]">
               Private. Verifiable. No middleman.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             {wallet ? (
-              <div className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-2)] px-3 py-1.5 text-xs md:flex">
+              <div className="hidden items-center gap-2 rounded-full border border-[var(--line-strong)] bg-[var(--surface-2)] px-3 py-1.5 text-xs md:flex">
                 <span className="h-2 w-2 rounded-full bg-[var(--success)] animate-pulse" />
                 <span className="font-mono text-[var(--ink)]">{formatWallet(wallet)}</span>
-                <span className="rounded-full border border-[var(--line)] bg-white/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted-ink)]">
+                <span className="rounded-full border border-[var(--line)] bg-[var(--surface-3)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted-ink)]">
                   {mode || 'session'}
                 </span>
               </div>
@@ -101,10 +104,10 @@ export default function MissionHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition md:text-sm ${
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition md:text-sm ${
                   active
-                    ? 'bg-[var(--ink)] text-[var(--surface-1)]'
-                    : 'text-[var(--muted-ink)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'
+                    ? 'border-[var(--line-strong)] bg-[var(--surface-2)] text-[var(--ink)] shadow-[inset_0_-1px_0_0_var(--accent-gold)]'
+                    : 'border-transparent text-[var(--muted-ink)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]'
                 }`}
               >
                 {item.label}

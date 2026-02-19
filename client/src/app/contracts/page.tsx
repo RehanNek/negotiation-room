@@ -337,8 +337,9 @@ function ContractsWorkspace() {
     : null;
 
   return (
-    <div className="space-y-4 md:space-y-6">
-      <section className="card space-y-4 p-5 md:p-6">
+    <div className="space-y-5 md:space-y-7">
+      <section className="card relative space-y-4 p-5 md:p-6">
+        <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent-gold)]/78 to-transparent" />
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Your Contracts</h1>
@@ -429,7 +430,7 @@ function ContractsWorkspace() {
         <>
           {pending.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Needs Action ({pending.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Needs Action ({pending.length})</h2>
               <div className="space-y-3">
                 {pending.map((contract) => (
                   <ContractQueueCard
@@ -450,7 +451,7 @@ function ContractsWorkspace() {
 
           {active.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Active ({active.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Active ({active.length})</h2>
               <div className="space-y-3">
                 {active.map((contract) => (
                   <ContractQueueCard
@@ -471,7 +472,7 @@ function ContractsWorkspace() {
 
           {resolved.length > 0 ? (
             <section className="space-y-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Resolved ({resolved.length})</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-ink)]">Resolved ({resolved.length})</h2>
               <div className="space-y-3">
                 {resolved.map((contract) => (
                   <ContractQueueCard

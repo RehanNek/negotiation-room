@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { JetBrains_Mono, Manrope, Playfair_Display } from 'next/font/google';
+import { Inter, JetBrains_Mono, Playfair_Display } from 'next/font/google';
 import MissionHeader from '@/components/MissionHeader';
 import './globals.css';
 
@@ -9,7 +9,7 @@ const display = Playfair_Display({
   weight: ['600', '700'],
 });
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
   weight: ['400', '500', '600', '700'],
