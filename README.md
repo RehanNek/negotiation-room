@@ -1,239 +1,76 @@
-# Signet (The Room)
+# Signet
 
-Private deal rooms + verifiable contract evidence, running on EigenCompute.
+Signet is a private, verifiable deal room.
 
-Last updated: 2026-02-20
+Two parties can agree terms, lock funds in escrow, and settle the outcome without relying on a middleman.
 
-## Production Snapshot
+## The Pitch
 
-- Website: [the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
-- EigenCompute app: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
-- Backend health (direct): `http://136.109.58.88:3000/health`
-- Runtime commit and provenance are deployment-dependent. Check live metadata with:
-  - `ecloud compute build list --environment sepolia`
-  - `ecloud compute app releases <APP_ID> --environment sepolia`
-  - `ecloud compute build info <BUILD_ID>`
+Most online deals break down for one reason: trust.
 
-Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
+- The buyer worries about paying too early.
+- The provider worries about doing the work and not getting paid.
+- Both sides worry about who decides if there is a dispute.
 
-## What The App Does
+Signet solves this with one clear flow:
 
-1. 1:1 wallet-auth deal rooms with per-party private notes (optional and wallet-local).
-2. Dual-confirm `done` flow (both parties must confirm same terms hash).
-3. Structured service/conditional contracts.
-4. Optional Sepolia escrow prepare/fund/settle/refund flow.
-5. Attestation-based evidence for contract outcomes.
-6. Reputation tracking by wallet deal behavior.
-7. Open C.L.A.W. agent workspace available in the website nav (`/agents`).
+1. Enter a private deal room.
+2. Negotiate and confirm terms together.
+3. Lock funds in escrow.
+4. Resolve based on agreed rules.
+5. Verify what happened with cryptographic proof.
 
-Home UX note:
+No manual broker. No hidden decision maker.
 
-- Reputation tier badges (for example `Unproven`) are intentionally hidden on the Overview page and shown in Profile/diagnostics contexts.
+## What Makes Signet Different
 
-## Escrow Semantics (Service Deals)
+- Private by default: each side can keep private notes for strategy.
+- Verifiable outcomes: deals and resolutions are backed by attestations.
+- Escrow-first settlement: money moves according to the agreed rule.
+- Works for humans and agents: use the web app or Open C.L.A.W. flow.
 
-Service deals are modeled as:
+## Who It Is For
 
-1. The service receiver (client/buyer/requester) is the default payer.
-2. Funds move from payer wallet -> escrow contract on funding.
-3. On `TRUE`/service affirmation, escrow releases to service provider.
-4. On `FALSE` or timeout refund path, escrow returns to payer.
-5. Once escrow exists, release affirmation authority is bound to escrow payer wallet.
+- Freelancers and clients closing service deals.
+- Counterparties making conditional agreements.
+- Teams that need transparent, replayable deal history.
+- AI agents that need a shared, auditable deal protocol.
 
-UI now reflects this explicitly in Contracts:
+## Live Product
 
-- `Payer`
-- `Release to provider`
-- `Refund back to payer`
-- `Escrow pending settlement` while onchain settlement is in-flight
+- Website: [https://the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
+- Agent workspace: [https://the-room-smoky.vercel.app/agents](https://the-room-smoky.vercel.app/agents)
+- Proof verification view: [https://the-room-smoky.vercel.app/verify](https://the-room-smoky.vercel.app/verify)
 
-## Trust Upgrade (vNext) Status
+## Product Flow (Simple)
 
-Implemented:
+1. **Create or join a deal room**
+2. **Negotiate terms**
+3. **Both sides confirm done**
+4. **Payer funds escrow**
+5. **Outcome resolves**
+6. **Escrow releases to provider or refunds payer**
+7. **Anyone can verify proof**
 
-1. Publicly verifiable attestations (EIP-712, not backend-trust-only HMAC).
-2. Browser-local verification in `/verify` (payload canonicalization + hash + signature recovery/verification).
-3. Endpoint-aware privacy routing (`NEXT_PUBLIC_API_URL` for non-auth routes, `/auth/*` proxy-compatible).
-4. Verifiable backend release path using `ecloud ... --verifiable`.
-5. Performance hardening:
-   - removed N+1 escrow fetch in contract wallet listing
-   - removed scheduler N+1 attestation lookup
-   - added contract/escrow/attestation indexes
+## Open C.L.A.W. and Agent-to-Agent
 
-## Attestation Model
+Signet is not only a human chat UI.
 
-`GET /attestation/:id` is the verification source of truth.
+It also supports agent-to-agent execution through Open C.L.A.W., so agents can:
 
-Returned verification fields include:
+- create and join rooms,
+- exchange structured offers,
+- close with dual confirmation,
+- and complete escrow + verification through the same protocol.
 
-- `data_hash`, `hash_algo` (`sha256-rfc8785`)
-- `signature`, `sig_type` (`eip712`)
-- `signer_wallet`
-- `sig_domain`, `sig_types`, `sig_message`
-- legacy `tee_signature` alias (kept for compatibility)
+## For Builders
 
-`GET /attestation/:id/verify` is compatibility-only. UI must not treat it as authority.
+If you want implementation details, use these docs:
 
-## API Routing and Privacy (Client)
-
-Client behavior:
-
-- `/auth/*` -> `/api/*` proxy-compatible path
-- non-auth business routes -> direct `NEXT_PUBLIC_API_URL` when set
-- localhost -> local fallback
-
-Implementation file: `/Users/rehannek/Documents/Negotiation room/client/src/lib/api.ts`.
-
-## Web Routes
-
-- `/` Overview
-- `/negotiate` Deal room workspace
-- `/contracts` Contract + escrow actions
-- `/verify` Browser-local cryptographic verification
-- `/agents` Open C.L.A.W. agent workspace
-
-## Verification Flow
-
-Browser `/verify` flow:
-
-1. Fetch `GET /attestation/:id`
-2. Canonicalize payload (`json-canonicalize`)
-3. Compute `sha256-rfc8785`
-4. Verify EIP-712 signature and recovered signer
-5. Render explicit Valid/Invalid diagnostics
-
-Additional behavior:
-
-- If a pasted attestation ID is stale for a resolved contract, the page attempts to load the most relevant latest attestation for that contract before rendering the verdict.
-
-Offline verification script (same cryptographic checks):
-
-```bash
-cd server
-npm run verify:attestation -- /path/to/attestation.json
-```
-
-## API Reference (Core)
-
-| Method | Endpoint | Notes |
-| --- | --- | --- |
-| POST | `/auth/challenge` | wallet challenge |
-| POST | `/auth/verify` | signed challenge -> bearer token |
-| POST | `/auth/demo` | demo session (if enabled) |
-| GET | `/auth/me` | validate token |
-| POST | `/negotiate/create` | create room |
-| POST | `/negotiate/join` | join room |
-| POST | `/negotiate/offer` | submit offer |
-| POST | `/negotiate/done` | dual-confirm close |
-| POST | `/negotiate/walkaway` | close without deal |
-| GET | `/negotiate/status/:id` | deal-room state |
-| GET | `/contract/:id` | contract details |
-| GET | `/contract/wallet/:wallet` | list contracts |
-| POST | `/contract/:id/resolve` | conditional resolution |
-| POST | `/contract/:id/affirm` | service affirmation |
-| POST | `/contract/:id/escrow/prepare` | escrow prepare |
-| POST | `/contract/:id/escrow/funded` | funding proof |
-| GET | `/contract/:id/escrow` | escrow state |
-| GET | `/reputation/:wallet` | wallet reputation |
-| GET | `/reputation/leaderboard` | leaderboard |
-| GET | `/attestation/:id` | attestation source of truth |
-| GET | `/attestation/:id/verify` | compatibility endpoint |
-
-Protected endpoints require:
-
-```http
-Authorization: Bearer <token>
-```
-
-## Local Development
-
-### 1) Server
-
-```bash
-cd server
-cp .env.example .env
-npm install
-npm run dev
-```
-
-### 2) Client
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-## Environment Variables
-
-### Server (`server/.env`)
-
-- `PORT` (default `3000`)
-- `DATABASE_PATH`
-- `AUTH_DEMO_MODE`
-- `CORS_ALLOWED_ORIGINS` (comma-separated allowlist)
-- `ESCROW_CHAIN_ID` (default `11155111`)
-- `ESCROW_VERIFIER_PRIVATE_KEY` (used for EIP-712 attestation signing identity)
-
-Important:
-
-- If `ESCROW_VERIFIER_PRIVATE_KEY` is not set, code falls back to a built-in dev key.
-- Do not rely on fallback key in production.
-
-### Client (`client/.env.local`)
-
-- `NEXT_PUBLIC_API_URL` (recommended HTTPS backend URL)
-- `NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL` (optional, defaults to Sepolia Etherscan tx URL)
-
-## Verifiable Deployment Runbook
-
-Prerequisites:
-
-1. `ecloud auth whoami` shows the wallet you want to deploy with.
-2. `ecloud billing status` shows active compute subscription.
-3. EigenCloud GitHub App is installed and has access to this repo.
-
-Deploy from pinned commit:
-
-```bash
-ecloud compute app upgrade <APP_ID> \
-  --environment sepolia \
-  --verifiable \
-  --repo https://github.com/<owner>/<repo>.git \
-  --commit <sha> \
-  --build-context server \
-  --build-dockerfile Dockerfile \
-  --env-file server/.env
-```
-
-Frontend production deploy:
-
-```bash
-cd client
-npx vercel --prod
-```
-
-Verify release metadata:
-
-```bash
-ecloud compute app releases <APP_ID> --environment sepolia
-ecloud compute build info <BUILD_ID>
-```
-
-## Repo Layout
-
-```text
-client/                  Next.js app
-server/                  Express/TypeScript backend
-contracts/               Hardhat escrow contract workspace
-docs/openclaw-runbook.md API-first execution runbook
-skill/skill.md           OpenClaw skill instructions
-prd.md                   Product requirements
-```
-
-## Related Docs
-
-- `/Users/rehannek/Documents/Negotiation room/client/README.md`
 - `/Users/rehannek/Documents/Negotiation room/docs/openclaw-runbook.md`
 - `/Users/rehannek/Documents/Negotiation room/skill/skill.md`
 - `/Users/rehannek/Documents/Negotiation room/prd.md`
+
+## One-Line Summary
+
+Signet is where serious deals get done privately, settled fairly, and proven cryptographically.
