@@ -27,16 +27,26 @@ import type {
 } from '../types';
 
 const ESCROW_ABI = parseAbi([
+  'error InvalidVerifier()',
+  'error InvalidDealConfig()',
+  'error DealAlreadyFunded()',
+  'error DealNotFunded()',
+  'error DealAlreadyClosed()',
+  'error TimeoutNotReached()',
+  'error InvalidSignature()',
+  'error ValueTransferFailed()',
   'function fundDeal(bytes32 dealHash,address recipientIfTrue,address recipientIfFalse,uint64 timeout) payable',
   'function settleDeal(bytes32 dealHash,bool verdict,bytes32 attestationHash,bytes signature)',
   'function refundAfterTimeout(bytes32 dealHash)',
   'function settlementNonces(bytes32 dealHash) view returns (uint256)',
+  'function getDeal(bytes32 dealHash) view returns (uint256 amount,address payer,address recipientIfTrue,address recipientIfFalse,uint64 timeout,bool funded,bool settled,bool refunded,bool releasedToTrue,uint256 settledAmount,bytes32 attestationHash,uint256 nonce)',
   'event DealFunded(bytes32 indexed dealHash,address indexed payer,uint256 amount,address recipientIfTrue,address recipientIfFalse,uint64 timeout)',
   'event DealSettled(bytes32 indexed dealHash,bool verdict,address indexed recipient,uint256 amount,bytes32 attestationHash,uint256 nonce)',
   'event DealRefunded(bytes32 indexed dealHash,address indexed payer,uint256 amount)',
 ]);
 
 let schedulerTimer: NodeJS.Timeout | null = null;
+const settleInFlightContracts = new Set<string>();
 
 function envInt(key: string, fallback: number): number {
   const raw = process.env[key];
@@ -660,8 +670,10 @@ export async function tryAutoSettleEscrow(
   const escrow = getEscrowByContractId(contractId);
   if (!escrow) return;
   if (escrow.status !== 'funded' && escrow.status !== 'failed') return;
+  if (settleInFlightContracts.has(contractId)) return;
 
   const hash = attestationHashHex || (`0x${'0'.repeat(64)}` as `0x${string}`);
+  settleInFlightContracts.add(contractId);
 
   try {
     await settleEscrowOnchain({
@@ -671,12 +683,51 @@ export async function tryAutoSettleEscrow(
       attestationHashHex: hash,
     });
   } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (errorMessage.includes('DealAlreadyClosed') || errorMessage.includes('0xe20d8067')) {
+      try {
+        const publicClient = getPublicClient();
+        const onchainDeal = await publicClient.readContract({
+          address: escrow.contract_address as `0x${string}`,
+          abi: ESCROW_ABI,
+          functionName: 'getDeal',
+          args: [escrow.deal_hash as Hex],
+        });
+
+        const settled = Boolean(onchainDeal?.[6]);
+        const refunded = Boolean(onchainDeal?.[7]);
+        const releasedToTrue = Boolean(onchainDeal?.[8]);
+
+        if (settled || refunded) {
+          const reconciledStatus: EscrowStatus = settled
+            ? (releasedToTrue ? 'released' : 'refunded')
+            : 'refunded';
+
+          run(
+            `UPDATE escrows
+             SET status = ?, attestation_id = COALESCE(?, attestation_id), last_error = NULL, updated_at = datetime('now')
+             WHERE contract_id = ?`,
+            [reconciledStatus, attestationId, contractId]
+          );
+          flushDb();
+          return;
+        }
+      } catch {
+        // Fall through to generic error persistence if chain reconciliation fails.
+      }
+    }
+
     run(
-      // Keep status as 'funded' because funds are still locked onchain; record the error and retry later.
-      `UPDATE escrows SET status = 'funded', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
-      [error instanceof Error ? error.message : String(error), contractId]
+      // Keep status unchanged (avoid clobbering a concurrently written terminal state); capture the failure for retry/debugging.
+      `UPDATE escrows
+       SET last_error = ?, updated_at = datetime('now')
+       WHERE contract_id = ? AND status IN ('funded', 'failed')`,
+      [errorMessage, contractId]
     );
     flushDb();
+  } finally {
+    settleInFlightContracts.delete(contractId);
   }
 }
 
@@ -744,8 +795,10 @@ async function schedulerTick(): Promise<void> {
         await refundEscrowOnchain(escrow);
       } catch (error: unknown) {
         run(
-          // Funds are still locked; leave status as funded and capture the failure for retry/debugging.
-          `UPDATE escrows SET status = 'funded', last_error = ?, updated_at = datetime('now') WHERE contract_id = ?`,
+          // Keep status unchanged and capture the failure for retry/debugging.
+          `UPDATE escrows
+           SET last_error = ?, updated_at = datetime('now')
+           WHERE contract_id = ? AND status = 'funded'`,
           [error instanceof Error ? error.message : String(error), escrow.contract_id]
         );
         flushDb();
