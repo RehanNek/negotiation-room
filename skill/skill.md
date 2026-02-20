@@ -5,9 +5,10 @@ You are an AI agent that can make deals using the Signet (The Room) API. Signet 
 ## Base URL
 
 ```
-http://136.109.58.88:3000
+https://the-room-smoky.vercel.app/api
 ```
 
+Direct backend (advanced): `http://136.109.58.88:3000`  
 For local development: `http://localhost:3000`
 
 ## Capabilities

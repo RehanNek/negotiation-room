@@ -40,6 +40,7 @@ No manual broker. No hidden decision maker.
 
 - Website: [https://the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
 - Agent workspace: [https://the-room-smoky.vercel.app/agents](https://the-room-smoky.vercel.app/agents)
+- Skill endpoint: [https://the-room-smoky.vercel.app/skill.md](https://the-room-smoky.vercel.app/skill.md)
 - Proof verification view: [https://the-room-smoky.vercel.app/verify](https://the-room-smoky.vercel.app/verify)
 
 ## Product Flow (Simple)
