@@ -657,6 +657,37 @@ async function settleEscrowOnchain(params: {
   flushDb();
 }
 
+async function reconcileEscrowTerminalStateFromChain(escrow: Escrow, attestationId: string | null): Promise<boolean> {
+  const publicClient = getPublicClient();
+  const onchainDeal = await publicClient.readContract({
+    address: escrow.contract_address as `0x${string}`,
+    abi: ESCROW_ABI,
+    functionName: 'getDeal',
+    args: [escrow.deal_hash as Hex],
+  });
+
+  const settled = Boolean(onchainDeal?.[6]);
+  const refunded = Boolean(onchainDeal?.[7]);
+  const releasedToTrue = Boolean(onchainDeal?.[8]);
+
+  if (!settled && !refunded) {
+    return false;
+  }
+
+  const reconciledStatus: EscrowStatus = settled
+    ? (releasedToTrue ? 'released' : 'refunded')
+    : 'refunded';
+
+  run(
+    `UPDATE escrows
+     SET status = ?, attestation_id = COALESCE(?, attestation_id), last_error = NULL, updated_at = datetime('now')
+     WHERE contract_id = ?`,
+    [reconciledStatus, attestationId, escrow.contract_id]
+  );
+  flushDb();
+  return true;
+}
+
 export async function tryAutoSettleEscrow(
   contractId: string,
   verdict: ConditionVerdict,
@@ -676,6 +707,10 @@ export async function tryAutoSettleEscrow(
   settleInFlightContracts.add(contractId);
 
   try {
+    if ((escrow.settle_tx_hash || escrow.refund_tx_hash) && await reconcileEscrowTerminalStateFromChain(escrow, attestationId)) {
+      return;
+    }
+
     await settleEscrowOnchain({
       escrow,
       verdict,
@@ -687,30 +722,7 @@ export async function tryAutoSettleEscrow(
 
     if (errorMessage.includes('DealAlreadyClosed') || errorMessage.includes('0xe20d8067')) {
       try {
-        const publicClient = getPublicClient();
-        const onchainDeal = await publicClient.readContract({
-          address: escrow.contract_address as `0x${string}`,
-          abi: ESCROW_ABI,
-          functionName: 'getDeal',
-          args: [escrow.deal_hash as Hex],
-        });
-
-        const settled = Boolean(onchainDeal?.[6]);
-        const refunded = Boolean(onchainDeal?.[7]);
-        const releasedToTrue = Boolean(onchainDeal?.[8]);
-
-        if (settled || refunded) {
-          const reconciledStatus: EscrowStatus = settled
-            ? (releasedToTrue ? 'released' : 'refunded')
-            : 'refunded';
-
-          run(
-            `UPDATE escrows
-             SET status = ?, attestation_id = COALESCE(?, attestation_id), last_error = NULL, updated_at = datetime('now')
-             WHERE contract_id = ?`,
-            [reconciledStatus, attestationId, contractId]
-          );
-          flushDb();
+        if (await reconcileEscrowTerminalStateFromChain(escrow, attestationId)) {
           return;
         }
       } catch {
@@ -779,6 +791,19 @@ async function schedulerTick(): Promise<void> {
 
   for (const row of funded) {
     const escrow = toEscrowModel(row);
+
+    if (escrow.settle_tx_hash || escrow.refund_tx_hash) {
+      try {
+        if (await reconcileEscrowTerminalStateFromChain(
+          escrow,
+          row.contract_attestation_id ? String(row.contract_attestation_id) : null
+        )) {
+          continue;
+        }
+      } catch {
+        // Keep running normal settlement/refund paths below when chain reconciliation is unavailable.
+      }
+    }
 
     if (row.contract_status === 'resolved' && (row.contract_verdict === 'TRUE' || row.contract_verdict === 'FALSE')) {
       await tryAutoSettleEscrow(
