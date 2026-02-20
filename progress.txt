@@ -24,7 +24,7 @@
 - [x] “Done” collects amount (required) + optional timeline/deliverables/notes (2026-02-18)
 - [x] Service deal produces structured contract (2026-02-15, refreshed 2026-02-18)
 - [x] Conditional deal produces contract with condition + resolution date (2026-02-15)
-- [x] Private constraints required on create/join; returned only to the owning party (2026-02-18)
+- [x] Private notes optional on create/join; returned only to the owning party (2026-02-20)
 - [x] Walkaway closes negotiation without agreement (2026-02-15)
 
 ## Phase 3: Contract Engine
@@ -56,6 +56,9 @@
 - [x] Service payer defaults hardened to service receiver wallet when explicit payer is missing (2026-02-19)
 - [x] Contract list polling added so Party A/Party B escrow status updates without manual refresh (2026-02-19)
 - [x] Contract card now shows explicit escrow routing: payer / release-to-provider / refund-to-payer (2026-02-19)
+- [x] Service affirmation authority bound to escrow payer once escrow exists (2026-02-20)
+- [x] Escrow pending settlement state added before final released/refunded state (2026-02-20)
+- [x] Shared service-role resolver added to remove duplicated role-mapping logic (2026-02-20)
 
 ## Phase 5: OpenClaw Skill
 - [x] skill/skill.md written with full API docs (2026-02-15)
@@ -72,6 +75,7 @@
 - [x] Removed duplicate waiting-state bottom box in negotiation workspace (2026-02-19)
 - [x] Updated escrow-funded notice copy to remove repetitive line about hiding fund button (2026-02-19)
 - [x] Verify page now upgrades stale attestation links to the latest relevant contract/escrow proof (2026-02-19)
+- [x] Open C.L.A.W. is visible in website nav with dedicated `/agents` page (2026-02-20)
 
 ## Phase 7: Deployment
 - [x] Docker image builds and runs locally (2026-02-16)

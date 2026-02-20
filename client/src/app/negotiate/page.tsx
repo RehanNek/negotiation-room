@@ -13,17 +13,17 @@ import type { DealType } from '@/lib/types';
 const FLOW_STEPS = [
   { id: 'identity', label: 'Identity', description: 'Connect a wallet and start a session.' },
   { id: 'path', label: 'Room', description: 'Create a new room or join an invite.' },
-  { id: 'setup', label: 'Private Inputs', description: 'Add your private constraints (required).' },
+  { id: 'setup', label: 'Private Notes', description: 'Add private notes for strategy (optional).' },
   { id: 'live', label: 'Deal Chat', description: 'Work through terms privately and confirm the deal.' },
 ] as const;
 
 type WizardStep = (typeof FLOW_STEPS)[number]['id'];
 type NegotiationPath = 'create_custom' | 'join_existing';
 
-function parseConstraints(rawText: string): Record<string, unknown> {
+function parsePrivateNotes(rawText: string): Record<string, unknown> {
   const trimmed = rawText.trim();
   if (!trimmed) {
-    throw new Error('Private constraints are required. Add at least one sentence (or JSON).');
+    return {};
   }
 
   try {
@@ -65,8 +65,8 @@ function NegotiateWorkspace() {
 
   const hasSetupInputs = useMemo(() => {
     if (!path) return false;
-    if (path === 'create_custom') return category.trim().length > 0 && constraints.trim().length > 0;
-    if (path === 'join_existing') return joinRoomId.trim().length > 0 && joinConstraints.trim().length > 0;
+    if (path === 'create_custom') return category.trim().length > 0;
+    if (path === 'join_existing') return joinRoomId.trim().length > 0;
     return true;
   }, [category, constraints, joinConstraints, joinRoomId, path]);
 
@@ -99,7 +99,7 @@ function NegotiateWorkspace() {
     }
 
     if (!canAdvanceFromSetup(path || 'create_custom', hasSetupInputs)) {
-      setError('Category and private constraints are required for new room creation.');
+      setError('Category is required for new room creation.');
       return;
     }
 
@@ -109,7 +109,7 @@ function NegotiateWorkspace() {
 
     try {
       const params: Record<string, unknown> = {};
-      const privateInputs = parseConstraints(constraints);
+      const privateInputs = parsePrivateNotes(constraints);
       if (dealType === 'conditional') {
         params.condition = condition || 'Bitcoin closes above 100000 USD by the resolution date.';
         params.data_source = dataSource;
@@ -141,7 +141,7 @@ function NegotiateWorkspace() {
     }
 
     if (!canAdvanceFromSetup(path || 'join_existing', hasSetupInputs)) {
-      setError('Room ID and private constraints are required.');
+      setError('Room ID is required.');
       return;
     }
 
@@ -151,7 +151,7 @@ function NegotiateWorkspace() {
 
     try {
       const roomId = joinRoomId.trim();
-      const privateInputs = parseConstraints(joinConstraints);
+      const privateInputs = parsePrivateNotes(joinConstraints);
       await api.joinNegotiation({
         room_id: roomId,
         constraints: privateInputs,
@@ -333,14 +333,15 @@ function NegotiateWorkspace() {
             ) : null}
 
             <label className="space-y-1 md:col-span-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (required)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Notes (optional)</span>
               <textarea
                 value={constraints}
                 onChange={(event) => setConstraints(event.target.value)}
                 rows={3}
                 className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
-                placeholder='Only you can see this. Example: {"max_price_usd": 500, "deadline": "2026-03-01"} or "I will not pay more than $500."'
+                placeholder='This is meant to help you strategise. Only you can see this. Example: {"max_price_usd": 500, "deadline": "2026-03-01"}'
               />
+              <p className="text-xs text-[var(--muted-ink)]">This is meant to help you strategise. Only you can see this.</p>
             </label>
           </div>
 
@@ -375,14 +376,15 @@ function NegotiateWorkspace() {
           </label>
 
           <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Constraints (required)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Private Notes (optional)</span>
             <textarea
               value={joinConstraints}
               onChange={(event) => setJoinConstraints(event.target.value)}
               rows={3}
               className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 text-sm text-[var(--ink)]"
-              placeholder='Only you can see this. Example: {"target_price_usd": 250} or "I can do this in 5 days."'
+              placeholder='This is meant to help you strategise. Only you can see this. Example: {"target_price_usd": 250}'
             />
+            <p className="text-xs text-[var(--muted-ink)]">This is meant to help you strategise. Only you can see this.</p>
           </label>
 
           <div className="flex flex-wrap gap-2">

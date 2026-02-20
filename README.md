@@ -2,30 +2,29 @@
 
 Private deal rooms + verifiable contract evidence, running on EigenCompute.
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 ## Production Snapshot
 
 - Website: [the-room-smoky.vercel.app](https://the-room-smoky.vercel.app)
 - EigenCompute app: `0x28B7Cbf332E7e1711C11bf1472114b76793B37A8`
 - Backend health (direct): `http://136.109.58.88:3000/health`
-- Runtime commits currently in use:
-  - backend: `2e8ca291028686c045733859010cd96221a10ba4`
-  - frontend: `33ca0a0`
-- Latest known verifiable backend release metadata:
-  - release: `21`
-  - provenance: `prov-ok sig-ok deps:2`
+- Runtime commit and provenance are deployment-dependent. Check live metadata with:
+  - `ecloud compute build list --environment sepolia`
+  - `ecloud compute app releases <APP_ID> --environment sepolia`
+  - `ecloud compute build info <BUILD_ID>`
 
 Dashboard: [verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8](https://verify-sepolia.eigencloud.xyz/app/0x28B7Cbf332E7e1711C11bf1472114b76793B37A8)
 
 ## What The App Does
 
-1. 1:1 wallet-auth deal rooms with per-party private constraints.
+1. 1:1 wallet-auth deal rooms with per-party private notes (optional and wallet-local).
 2. Dual-confirm `done` flow (both parties must confirm same terms hash).
 3. Structured service/conditional contracts.
 4. Optional Sepolia escrow prepare/fund/settle/refund flow.
 5. Attestation-based evidence for contract outcomes.
 6. Reputation tracking by wallet deal behavior.
+7. Open C.L.A.W. agent workspace available in the website nav (`/agents`).
 
 Home UX note:
 
@@ -39,12 +38,14 @@ Service deals are modeled as:
 2. Funds move from payer wallet -> escrow contract on funding.
 3. On `TRUE`/service affirmation, escrow releases to service provider.
 4. On `FALSE` or timeout refund path, escrow returns to payer.
+5. Once escrow exists, release affirmation authority is bound to escrow payer wallet.
 
 UI now reflects this explicitly in Contracts:
 
 - `Payer`
 - `Release to provider`
 - `Refund back to payer`
+- `Escrow pending settlement` while onchain settlement is in-flight
 
 ## Trust Upgrade (vNext) Status
 
@@ -82,6 +83,14 @@ Client behavior:
 - localhost -> local fallback
 
 Implementation file: `/Users/rehannek/Documents/Negotiation room/client/src/lib/api.ts`.
+
+## Web Routes
+
+- `/` Overview
+- `/negotiate` Deal room workspace
+- `/contracts` Contract + escrow actions
+- `/verify` Browser-local cryptographic verification
+- `/agents` Open C.L.A.W. agent workspace
 
 ## Verification Flow
 

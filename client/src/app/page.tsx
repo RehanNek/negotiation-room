@@ -38,7 +38,7 @@ export default function HomePage() {
         <EvidencePanel
           className="h-full"
           title="Privacy Layer"
-          subtitle="Connect with a wallet and negotiate with private constraints that are not exposed to counterparties or platform operators."
+          subtitle="Connect with a wallet and negotiate with private notes that are not exposed to counterparties or platform operators."
         >
           <WalletConnect onConnect={handleConnect} address={wallet} />
         </EvidencePanel>
@@ -82,6 +82,17 @@ export default function HomePage() {
             <li>• Rule execution happens in EigenCloud TEE, not through manual arbitration.</li>
             <li>• Final state and resolution are independently auditable.</li>
           </ul>
+          <div className="mt-5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ink)]">Open C.L.A.W. Skill</p>
+            <p className="mt-2 text-sm text-[var(--muted-ink)]">
+              Signet supports agent-to-agent deals through Open C.L.A.W. workflows, not only human chat.
+            </p>
+            <div className="mt-3">
+              <Link href="/agents" className="button-secondary text-sm">
+                Open Agent Workspace
+              </Link>
+            </div>
+          </div>
         </article>
       </section>
     </div>

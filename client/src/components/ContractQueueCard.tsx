@@ -29,9 +29,21 @@ interface ContractQueueCardProps {
 
 const EXPLORER_TX_BASE = process.env.NEXT_PUBLIC_ESCROW_EXPLORER_BASE_URL || 'https://sepolia.etherscan.io/tx/';
 
-function escrowStatusCopy(status?: EscrowStatus, escrowEnabled?: boolean | null): string {
+function escrowStatusCopy(params: {
+  status?: EscrowStatus;
+  escrowEnabled?: boolean | null;
+  settlementPending?: boolean;
+  viewerIsProvider?: boolean;
+}): string {
+  const { status, escrowEnabled, settlementPending = false, viewerIsProvider = false } = params;
   if (escrowEnabled === false) {
     return 'Onchain escrow is not enabled on this backend.';
+  }
+  if (settlementPending) {
+    if (viewerIsProvider) {
+      return 'Escrow pending settlement. Work is affirmed and payout to provider is processing onchain.';
+    }
+    return 'Escrow pending settlement. Work is affirmed and settlement is processing onchain.';
   }
   switch (status) {
     case 'awaiting_funding':
@@ -154,6 +166,17 @@ export default function ContractQueueCard({
   const payerWallet = escrow?.payer_wallet || inferredPayerWallet;
   const releaseRecipientWallet = escrow?.recipient_if_true_wallet || providerWallet;
   const refundRecipientWallet = escrow?.recipient_if_false_wallet || payerWallet;
+  const isProviderViewer = Boolean(
+    normalizedWallet &&
+      releaseRecipientWallet &&
+      normalizedWallet === releaseRecipientWallet.toLowerCase()
+  );
+  const escrowSettlementPending = Boolean(
+    escrow?.status === 'funded' &&
+      contract.status === 'resolved' &&
+      !escrow?.settle_tx_hash &&
+      !escrow?.refund_tx_hash
+  );
   const escrowNeedsFunding = Boolean(!escrow || escrow.status === 'awaiting_funding' || (escrow.status === 'failed' && !escrow.fund_tx_hash));
   const payerCanFundEscrow = Boolean(
     onFundEscrow &&
@@ -218,7 +241,14 @@ export default function ContractQueueCard({
 
       <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted-ink)]">Escrow Status</p>
-        <p className="mt-1 text-sm text-[var(--ink)]">{escrowStatusCopy(escrow?.status, escrowEnabled)}</p>
+        <p className="mt-1 text-sm text-[var(--ink)]">
+          {escrowStatusCopy({
+            status: escrow?.status,
+            escrowEnabled,
+            settlementPending: escrowSettlementPending,
+            viewerIsProvider: isProviderViewer,
+          })}
+        </p>
         <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
           <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Payer: <span className="font-mono text-[var(--ink)]">{formatWallet(payerWallet)}</span>
@@ -259,7 +289,7 @@ export default function ContractQueueCard({
             </p>
           ) : null}
         </div>
-        {escrow?.last_error ? (
+        {escrow?.last_error && escrow.status !== 'released' && escrow.status !== 'refunded' ? (
           <p className="mt-2 text-xs text-[var(--danger)]">Latest escrow error: {escrow.last_error}</p>
         ) : null}
       </div>

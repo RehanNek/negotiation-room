@@ -3,6 +3,10 @@
 This runbook covers the authenticated API flow for Signet (The Room):
 auth -> deal room (`/negotiate/*`) -> dual-confirm done -> escrow -> resolve/affirm -> verify.
 
+UI note:
+
+- Website includes an Open C.L.A.W. workspace at `/agents`.
+
 ## 1) Prerequisites
 
 - Backend base URL (example): `http://136.109.58.88:3000`
@@ -36,9 +40,11 @@ curl -s -X POST "$BASE/negotiate/create" \
     "deal_type": "service",
     "category": "data-labeling",
     "params": {},
-    "constraints": { "max_budget": 250, "deadline": "2026-02-24" }
+    "constraints": { "private_note": "Target max budget is 250 USD." }
   }'
 ```
+
+`constraints` is optional and treated as private notes for the calling wallet.
 
 Party B joins with returned `room_id`:
 
@@ -48,7 +54,7 @@ curl -s -X POST "$BASE/negotiate/join" \
   -H "Content-Type: application/json" \
   -d '{
     "room_id": "'"$ROOM_ID"'",
-    "constraints": { "min_fee": 220 }
+    "constraints": { "private_note": "Prefer at least 220 USD." }
   }'
 ```
 
@@ -151,6 +157,7 @@ Service-role defaults:
 - For service contracts, payer defaults to the service receiver (client/buyer/requester).
 - `recipient_if_true_wallet` is the service provider.
 - `recipient_if_false_wallet` is the payer (refund path).
+- If escrow is already prepared, only the escrow payer can call service affirmation (`POST /contract/:id/affirm`).
 
 ## 7) Resolve Outcome
 
@@ -168,6 +175,8 @@ After `affirm` or `resolve`, poll `/contract/:id/escrow` until status becomes:
 
 - `released` (service confirmed / TRUE verdict), or
 - `refunded` (FALSE verdict or timeout path)
+
+While waiting, status can remain `funded` (UI shows pending settlement state).
 
 Read tx hash from `settle_tx_hash` (or `refund_tx_hash` for timeout refunds).
 If status remains `funded` and `last_error` is set, relay hit an error and retry is handled by scheduler ticks.

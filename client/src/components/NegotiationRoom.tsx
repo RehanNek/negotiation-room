@@ -846,15 +846,15 @@ export default function NegotiationRoom({ negotiationId, walletAddress, onComple
         ) : null}
 
         <InfoCallout
-          title="Your Private Inputs"
-          description="Visible only to your connected wallet in this room. These inputs are used for your side's strategy."
+          title="Private Notes"
+          description="This is meant to help you strategise. Only you can see this."
           tone="neutral"
         >
           {hasPrivateInputs ? (
-            <OfferTermsView terms={myPrivateInputs} title="Private Inputs" compact />
+            <OfferTermsView terms={myPrivateInputs} title="Private Notes" compact />
           ) : (
             <p className="text-xs text-[var(--muted-ink)]">
-              No private inputs were provided for this wallet.
+              No private notes were added for this wallet.
             </p>
           )}
         </InfoCallout>

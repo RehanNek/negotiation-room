@@ -1101,4 +1101,91 @@ describe('Negotiation API', () => {
     expect(affirm.status).toBe(403);
     expect(affirm.body.error).toContain('service receiver');
   });
+
+  it('binds service affirmation authority to the escrow payer once escrow is prepared', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'qa-testing',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          structured: true,
+          offer: { price: 250, timeline: '1 week' },
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          structured: true,
+          offer: { price: 245, timeline: '1 week' },
+        });
+
+      const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+      const contractId = done.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const tamperedTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(tamperedTerms), contractId]);
+
+      const prepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenA))
+        .send({});
+      expect(prepare.status).toBe(200);
+      expect(prepare.body.escrow?.payer_wallet).toBe(walletA.toLowerCase());
+
+      const affirmByCounterparty = await request(app)
+        .post(`/contract/${contractId}/affirm`)
+        .set(authHeader(tokenB))
+        .send({});
+
+      expect(affirmByCounterparty.status).toBe(403);
+      expect(affirmByCounterparty.body.error).toContain('escrow payer');
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+    }
+  });
 });

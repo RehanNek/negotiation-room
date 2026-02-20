@@ -18,6 +18,11 @@ import { createAttestation } from './attestation';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
 import { computeDealHash, computeTermsHash } from './terms';
 import { isEscrowEnabled } from './escrow-config';
+import {
+  parseAgreedTerms,
+  parseContractTerms,
+  resolveServiceRoles as resolveServiceRolesFromTerms,
+} from './service-roles';
 import type {
   ConditionVerdict,
   Escrow,
@@ -146,25 +151,6 @@ export function toEscrowModel(row: any): Escrow {
   };
 }
 
-function parseContractTerms(rawTerms: unknown): Record<string, any> {
-  if (typeof rawTerms !== 'string') return {};
-  try {
-    const parsed = JSON.parse(rawTerms);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, any>;
-  } catch {
-    return {};
-  }
-  return {};
-}
-
-function parseAgreedTerms(terms: Record<string, any>): Record<string, any> {
-  const agreed = terms.agreed_terms;
-  if (agreed && typeof agreed === 'object' && !Array.isArray(agreed)) {
-    return agreed as Record<string, any>;
-  }
-  return {};
-}
-
 function pickWallet(...values: unknown[]): string | null {
   for (const value of values) {
     const normalized = normalizeWallet(value);
@@ -178,25 +164,6 @@ function requireWalletAddress(value: string, label: string): string {
     throw badRequest(`${label} is not a valid EVM wallet address`);
   }
   return getAddress(value).toLowerCase();
-}
-
-function resolveServiceRoles(contract: any, terms: Record<string, any>, agreedTerms: Record<string, any>): { receiver: string; provider: string } {
-  const explicitReceiver = pickWallet(
-    agreedTerms.receiver_wallet,
-    agreedTerms.client_wallet,
-    agreedTerms.buyer_wallet,
-    agreedTerms.requester_wallet,
-    terms.receiver_wallet,
-    terms.client_wallet,
-    terms.buyer_wallet,
-    terms.requester_wallet
-  );
-
-  const partyA = String(contract.party_a_wallet).toLowerCase();
-  const partyB = String(contract.party_b_wallet).toLowerCase();
-  const receiver = explicitReceiver || partyA;
-  const provider = receiver === partyA ? partyB : partyA;
-  return { receiver, provider };
 }
 
 function parseAmountWei(terms: Record<string, any>, agreedTerms: Record<string, any>): bigint {
@@ -330,12 +297,19 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
   if (!contract) throw notFound('Contract not found');
   ensureParticipant(contract, requesterWallet);
 
-  const terms = parseContractTerms(contract.terms);
-  const agreedTerms = parseAgreedTerms(terms);
+  const terms = parseContractTerms(contract.terms) as Record<string, any>;
+  const agreedTerms = parseAgreedTerms(terms) as Record<string, any>;
   const contractAddress = getEscrowContractAddress();
   const chainId = getEscrowChainId();
+  const partyA = String(contract.party_a_wallet).toLowerCase();
+  const partyB = String(contract.party_b_wallet).toLowerCase();
   const serviceRoles = String(contract.deal_type) === 'service'
-    ? resolveServiceRoles(contract, terms, agreedTerms)
+    ? resolveServiceRolesFromTerms({
+      partyAWallet: partyA,
+      partyBWallet: partyB,
+      terms,
+      agreedTerms,
+    })
     : null;
 
   const payer = pickWallet(
@@ -347,7 +321,8 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
     terms.client_wallet,
     terms.buyer_wallet,
     terms.requester_wallet,
-    serviceRoles?.receiver,
+    requesterWallet,
+    serviceRoles?.receiverWallet,
     contract.party_a_wallet
   );
   if (!payer) throw badRequest('Unable to determine payer wallet for escrow');
@@ -357,11 +332,24 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
   let recipientIfFalse: string;
 
   if (serviceRoles) {
-    recipientIfTrue = pickWallet(agreedTerms.provider_wallet, terms.provider_wallet, serviceRoles.provider) || serviceRoles.provider;
+    if (payerWallet !== partyA && payerWallet !== partyB) {
+      throw badRequest('Service escrow payer must be one of the contract participants');
+    }
+
+    const counterparty = payerWallet === partyA ? partyB : partyA;
+    const providerFallback = serviceRoles.providerWallet === payerWallet ? counterparty : serviceRoles.providerWallet;
+    recipientIfTrue = pickWallet(
+      agreedTerms.provider_wallet,
+      agreedTerms.seller_wallet,
+      agreedTerms.vendor_wallet,
+      terms.provider_wallet,
+      terms.seller_wallet,
+      terms.vendor_wallet,
+      providerFallback,
+      counterparty
+    ) || counterparty;
     recipientIfFalse = payerWallet;
   } else {
-    const partyA = String(contract.party_a_wallet).toLowerCase();
-    const partyB = String(contract.party_b_wallet).toLowerCase();
     const counterparty = payerWallet === partyA ? partyB : partyA;
 
     recipientIfTrue = pickWallet(agreedTerms.recipient_if_true_wallet, terms.recipient_if_true_wallet, counterparty) || counterparty;
@@ -370,6 +358,10 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
 
   recipientIfTrue = requireWalletAddress(recipientIfTrue, 'recipient_if_true_wallet');
   recipientIfFalse = requireWalletAddress(recipientIfFalse, 'recipient_if_false_wallet');
+
+  if (serviceRoles && recipientIfTrue !== partyA && recipientIfTrue !== partyB) {
+    throw badRequest('Service provider wallet must be one of the contract participants');
+  }
 
   const amountWei = parseAmountWei(terms, agreedTerms);
   const timeout = parseTimeout(contract, terms, agreedTerms);

@@ -73,10 +73,12 @@ Authorization: Bearer <token>
     "resolution_date": "ISO date string"
   },
   "constraints": {
-    "your private constraints - never shown to the other party"
+    "private_note": "optional strategy note; never shown to the other party"
   }
 }
 ```
+
+`constraints` is optional. If omitted, backend stores an empty private-notes object.
 
 Returns: `{ "room_id": "uuid", "negotiation": { ... } }`
 
@@ -91,7 +93,7 @@ Authorization: Bearer <token>
 
 {
   "room_id": "uuid from room creator",
-  "constraints": { "your private constraints" }
+  "constraints": { "private_note": "optional strategy note" }
 }
 ```
 

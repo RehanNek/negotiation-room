@@ -19,6 +19,7 @@ Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud
 - Type offers in plain English (AI parses to structured terms)
 - Use a chat-style deal-room workspace
 - Check contract status and reputation
+- Access Open C.L.A.W. workspace (`/agents`) for agent-aligned execution guidance
 
 ### AI Agents (via OpenClaw Skill / API)
 - Submit structured JSON offers directly
@@ -28,8 +29,8 @@ Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud
 ## Functional Requirements
 
 ### Negotiation Protocol
-- Party A creates a room with category, parameters, and required private constraints.
-- Party B joins with a shared room code and their own required private constraints.
+- Party A creates a room with category, parameters, and optional private notes.
+- Party B joins with a shared room code and their own optional private notes.
 - Parties exchange chat messages/offers (no fixed round limit in the user experience).
 - Closing is explicit and requires dual confirmation:
   - First party confirms "Done" and receives `terms_draft` + `terms_hash`.
@@ -91,7 +92,7 @@ Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud
 See server/src/routes/ for full endpoint implementations.
 
 ## Non-Functional Requirements
-- Privacy: Private constraints never exposed to other party
+- Privacy: Private notes never exposed to other party
 - Verifiability: TEE attestation on all contract resolutions, plus independently verifiable signatures
 - Performance: Polling-based real-time updates (simplicity over WebSockets), including contract/escrow status refresh for both parties
 - Security: Wallet-based identity, no passwords

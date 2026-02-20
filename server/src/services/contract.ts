@@ -4,6 +4,11 @@ import { evaluateCondition } from './ai';
 import { fetchExternalData } from './external';
 import { createAttestation } from './attestation';
 import { getEscrowByContractId, toEscrowModel, tryAutoSettleEscrow } from './escrow';
+import {
+  parseAgreedTerms,
+  parseContractTerms,
+  resolveServiceRoles as resolveServiceRolesFromTerms,
+} from './service-roles';
 import { badRequest, conflict, forbidden, notFound } from '../errors';
 import type { ConditionVerdict, Escrow } from '../types';
 
@@ -26,25 +31,6 @@ function normalizeWallet(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim().toLowerCase() : null;
 }
 
-function parseContractTerms(rawTerms: unknown): Record<string, any> {
-  if (typeof rawTerms !== 'string') return {};
-  try {
-    const parsed = JSON.parse(rawTerms);
-    if (parsed && typeof parsed === 'object') return parsed as Record<string, any>;
-  } catch {
-    return {};
-  }
-  return {};
-}
-
-function parseAgreedTerms(terms: Record<string, any>): Record<string, any> {
-  const agreed = terms.agreed_terms;
-  if (agreed && typeof agreed === 'object' && !Array.isArray(agreed)) {
-    return agreed as Record<string, any>;
-  }
-  return {};
-}
-
 function resolveServiceRoles(contract: any): {
   receiverWallet: string;
   providerWallet: string;
@@ -53,27 +39,16 @@ function resolveServiceRoles(contract: any): {
 } {
   const terms = parseContractTerms(contract.terms);
   const agreedTerms = parseAgreedTerms(terms);
-  const explicitReceiver = [
-    terms.receiver_wallet,
-    agreedTerms.receiver_wallet,
-    agreedTerms.client_wallet,
-    agreedTerms.buyer_wallet,
-    agreedTerms.requester_wallet,
-    terms.client_wallet,
-    terms.buyer_wallet,
-    terms.requester_wallet,
-  ].find((value) => typeof value === 'string' && value.trim()) as string | undefined;
-
-  const receiverWallet = explicitReceiver || (contract.party_a_wallet as string);
-  const receiverNormalized = normalizeWallet(receiverWallet);
-  const partyANormalized = normalizeWallet(contract.party_a_wallet);
-  const providerWallet = receiverNormalized && partyANormalized && receiverNormalized === partyANormalized
-    ? (contract.party_b_wallet as string)
-    : (contract.party_a_wallet as string);
+  const roles = resolveServiceRolesFromTerms({
+    partyAWallet: String(contract.party_a_wallet),
+    partyBWallet: String(contract.party_b_wallet),
+    terms,
+    agreedTerms,
+  });
 
   return {
-    receiverWallet,
-    providerWallet,
+    receiverWallet: roles.receiverWallet,
+    providerWallet: roles.providerWallet,
     terms,
     agreedTerms,
   };
@@ -271,8 +246,15 @@ export async function affirmServiceDelivery(contractId: string, requesterWallet?
     throw forbidden('You are not a participant in this contract');
   }
 
-  const { receiverWallet, providerWallet, terms, agreedTerms } = resolveServiceRoles(contract);
-  if (requesterNormalized !== normalizeWallet(receiverWallet)) {
+  const { receiverWallet, providerWallet: inferredProviderWallet, terms, agreedTerms } = resolveServiceRoles(contract);
+  const escrow = getEscrowByContractId(contractId);
+  const escrowPayerWallet = normalizeWallet(escrow?.payer_wallet);
+
+  if (escrowPayerWallet) {
+    if (requesterNormalized !== escrowPayerWallet) {
+      throw forbidden('Only the escrow payer (service receiver) can affirm delivery and release escrow');
+    }
+  } else if (requesterNormalized !== normalizeWallet(receiverWallet)) {
     throw forbidden('Only the service receiver can affirm delivery and release escrow');
   }
 
@@ -291,14 +273,16 @@ export async function affirmServiceDelivery(contractId: string, requesterWallet?
     null;
   const resolvedAt = new Date().toISOString();
   const reasoning = 'Service receiver affirmed completion. Demo escrow release recorded for service provider.';
+  const finalReceiverWallet = escrow?.payer_wallet || receiverWallet;
+  const finalProviderWallet = escrow?.recipient_if_true_wallet || inferredProviderWallet;
 
   const attestation = await createAttestation(contractId, 'service_affirmation', {
     contract_id: contractId,
     action: 'service_delivery_affirmed',
     verdict: 'TRUE',
     affirmed_by: requesterWallet,
-    receiver_wallet: receiverWallet,
-    provider_wallet: providerWallet,
+    receiver_wallet: finalReceiverWallet,
+    provider_wallet: finalProviderWallet,
     escrow_release: {
       mode: 'demo',
       status: 'released',
@@ -330,8 +314,8 @@ export async function affirmServiceDelivery(contractId: string, requesterWallet?
     contract_id: contractId,
     verdict: 'TRUE',
     reasoning,
-    receiver_wallet: receiverWallet,
-    provider_wallet: providerWallet,
+    receiver_wallet: finalReceiverWallet,
+    provider_wallet: finalProviderWallet,
     attestation,
   };
 }

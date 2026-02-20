@@ -190,15 +190,15 @@ function ContractsWorkspace() {
       const startedAt = Date.now();
       setNotice({
         tone: 'info',
-        title: 'Work confirmed',
-        description: 'Escrow settlement is processing onchain. Waiting for a settlement transaction hash...',
+        title: 'Escrow pending',
+        description: 'Work is confirmed. Waiting for onchain escrow settlement to complete...',
       });
       let finished = false;
       while (Date.now() - startedAt < 120000) {
         await sleep(3500);
         try {
           const escrow = await api.getEscrow(contractId);
-          if (escrow.status === 'released' || escrow.status === 'refunded') {
+          if (escrow.status === 'released') {
             const txHash = escrow.settle_tx_hash || escrow.refund_tx_hash || undefined;
             setNotice({
               tone: 'success',
@@ -206,6 +206,18 @@ function ContractsWorkspace() {
               description: txHash
                 ? 'Settlement succeeded. Transaction hash below.'
                 : 'Settlement succeeded. Refresh the page if the tx hash is still loading.',
+              txHash,
+            });
+            await loadContracts();
+            finished = true;
+            break;
+          }
+          if (escrow.status === 'refunded') {
+            const txHash = escrow.refund_tx_hash || escrow.settle_tx_hash || undefined;
+            setNotice({
+              tone: 'warning',
+              title: 'Escrow refunded',
+              description: 'Escrow resolved to refund-back path. Check the contract escrow panel for recipient details.',
               txHash,
             });
             await loadContracts();
