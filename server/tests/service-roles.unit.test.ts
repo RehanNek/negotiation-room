@@ -36,6 +36,37 @@ describe('service role resolver', () => {
     expect(roles.providerWallet).toBe(partyA);
   });
 
+  it('uses provider_wallet from agreed_terms to override partyA default', () => {
+    const roles = resolveServiceRoles({
+      partyAWallet: partyA,
+      partyBWallet: partyB,
+      terms: {},
+      agreedTerms: {
+        provider_wallet: partyA,
+        receiver_wallet: partyB,
+      },
+    });
+
+    expect(roles.providerWallet).toBe(partyA);
+    expect(roles.receiverWallet).toBe(partyB);
+  });
+
+  it('resolves correctly when Party A is the provider via agreed_terms', () => {
+    // When Party A offers a service, provider_wallet = partyA, receiver_wallet = partyB.
+    // The escrow payer should be the receiver (partyB) and funds should release to the provider (partyA).
+    const roles = resolveServiceRoles({
+      partyAWallet: partyA,
+      partyBWallet: partyB,
+      terms: {},
+      agreedTerms: {
+        provider_wallet: partyA,
+      },
+    });
+
+    expect(roles.providerWallet).toBe(partyA);
+    expect(roles.receiverWallet).toBe(partyB);
+  });
+
   it('falls back to participant defaults when both explicit roles are non-participants', () => {
     const roles = resolveServiceRoles({
       partyAWallet: partyA,

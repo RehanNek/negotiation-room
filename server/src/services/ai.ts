@@ -616,11 +616,13 @@ Return ONLY JSON:
     "deadline": string|null,
     "schedule": string|null,
     "payment_terms": string|null,
-    "acceptance_criteria": string|null
+    "acceptance_criteria": string|null,
+    "provider_party": "A" | "B" | null
   },
   "missing_terms": string[],
   "confidence": number
-}`,
+}
+"provider_party" should be "A" if Party A offers/provides the service, "B" if Party B offers/provides it, or null if unclear.`,
     },
     {
       role: 'user',

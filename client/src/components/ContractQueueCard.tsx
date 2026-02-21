@@ -190,7 +190,8 @@ export default function ContractQueueCard({
       escrowNeedsFunding
   );
   const escrowFundingCta = !escrow ? 'Prepare & Fund Escrow' : escrow.status === 'failed' ? 'Retry Escrow Funding' : 'Fund Escrow';
-  const settlementTxHash = escrow?.settle_tx_hash || escrow?.refund_tx_hash;
+  const settlementTxHash = escrow?.settle_tx_hash ?? null;
+  const refundTxHash = escrow?.refund_tx_hash ?? null;
   const canAffirmService = Boolean(
     isService &&
       contract.status === 'active' &&
@@ -288,6 +289,19 @@ export default function ContractQueueCard({
                 className="font-mono text-[var(--ink)] underline decoration-dotted underline-offset-2"
               >
                 {formatWallet(settlementTxHash, 10, 8)}
+              </a>
+            </p>
+          ) : null}
+          {refundTxHash ? (
+            <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 md:col-span-2">
+              Refund tx:{' '}
+              <a
+                href={`${EXPLORER_TX_BASE}${refundTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[var(--ink)] underline decoration-dotted underline-offset-2"
+              >
+                {formatWallet(refundTxHash, 10, 8)}
               </a>
             </p>
           ) : null}

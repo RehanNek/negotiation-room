@@ -130,7 +130,9 @@ function applyAgreementToTerms(
 async function buildFinalTerms(
   rounds: FinalRoundSnapshot[],
   dealType: string,
-  category: string
+  category: string,
+  partyAWallet?: string,
+  partyBWallet?: string
 ): Promise<Record<string, any>> {
   const lastA = [...rounds].reverse().find((round) => round.party === 'A');
   const lastB = [...rounds].reverse().find((round) => round.party === 'B');
@@ -161,6 +163,11 @@ async function buildFinalTerms(
     }
     if (agreedTerms.deadline) {
       terms.deadline = agreedTerms.deadline;
+    }
+    if (partyAWallet && partyBWallet && (agreedTerms.provider_party === 'A' || agreedTerms.provider_party === 'B')) {
+      const providerIsA = agreedTerms.provider_party === 'A';
+      agreedTerms.provider_wallet = providerIsA ? partyAWallet : partyBWallet;
+      agreedTerms.receiver_wallet = providerIsA ? partyBWallet : partyAWallet;
     }
   }
 
@@ -482,7 +489,7 @@ async function finalizeContract(
   termsInput?: Record<string, any>,
   termsHashInput?: string
 ): Promise<any> {
-  const terms = termsInput || (await buildFinalTerms(rounds, neg.deal_type as string, neg.category as string));
+  const terms = termsInput || (await buildFinalTerms(rounds, neg.deal_type as string, neg.category as string, neg.party_a_wallet as string, neg.party_b_wallet as string));
   const termsHash = termsHashInput || computeTermsHash(terms);
   const summary = await generateContractSummary(terms, neg.deal_type as string, neg.category as string);
   const params = JSON.parse(neg.params as string);
