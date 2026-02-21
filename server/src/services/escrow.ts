@@ -42,12 +42,10 @@ const ESCROW_ABI = parseAbi([
   'error ValueTransferFailed()',
   'function fundDeal(bytes32 dealHash,address recipientIfTrue,address recipientIfFalse,uint64 timeout) payable',
   'function settleDeal(bytes32 dealHash,bool verdict,bytes32 attestationHash,bytes signature)',
-  'function refundAfterTimeout(bytes32 dealHash)',
   'function settlementNonces(bytes32 dealHash) view returns (uint256)',
   'function getDeal(bytes32 dealHash) view returns (uint256 amount,address payer,address recipientIfTrue,address recipientIfFalse,uint64 timeout,bool funded,bool settled,bool refunded,bool releasedToTrue,uint256 settledAmount,bytes32 attestationHash,uint256 nonce)',
   'event DealFunded(bytes32 indexed dealHash,address indexed payer,uint256 amount,address recipientIfTrue,address recipientIfFalse,uint64 timeout)',
   'event DealSettled(bytes32 indexed dealHash,bool verdict,address indexed recipient,uint256 amount,bytes32 attestationHash,uint256 nonce)',
-  'event DealRefunded(bytes32 indexed dealHash,address indexed payer,uint256 amount)',
 ]);
 
 let schedulerTimer: NodeJS.Timeout | null = null;
@@ -62,8 +60,7 @@ type EscrowRoutingIssueCode =
   | 'service_payer_not_participant'
   | 'service_recipient_true_not_participant'
   | 'service_recipient_false_not_participant'
-  | 'recipient_true_equals_payer'
-  | 'recipient_true_equals_recipient_false';
+  | 'recipient_true_equals_payer';
 
 type EscrowRoutingIssue = {
   code: EscrowRoutingIssueCode;
@@ -307,7 +304,7 @@ export function resolveEscrowRouting(params: {
 
     payerWallet = derivedPayer;
     recipientIfTrueWallet = derivedProvider;
-    recipientIfFalseWallet = derivedPayer;
+    recipientIfFalseWallet = derivedProvider;
 
     if (!isParticipantWallet(payerWallet, partyA, partyB)) {
       issues.push({
@@ -361,12 +358,6 @@ export function resolveEscrowRouting(params: {
     issues.push({
       code: 'recipient_true_equals_payer',
       detail: `Release recipient ${recipientIfTrueWallet} must differ from payer ${payerWallet}`,
-    });
-  }
-  if (walletsEqual(recipientIfTrueWallet, recipientIfFalseWallet)) {
-    issues.push({
-      code: 'recipient_true_equals_recipient_false',
-      detail: `Release recipient ${recipientIfTrueWallet} must differ from refund recipient ${recipientIfFalseWallet}`,
     });
   }
 
@@ -982,7 +973,7 @@ async function settleEscrowOnchain(params: {
     throw new Error('Settlement transaction reverted');
   }
 
-  const status: EscrowStatus = boolVerdict ? 'released' : 'refunded';
+  const status: EscrowStatus = 'released';
 
   run(
     `UPDATE escrows SET status = ?, settle_tx_hash = ?, attestation_id = ?, last_error = NULL, updated_at = datetime('now') WHERE contract_id = ?`,
@@ -1021,9 +1012,7 @@ async function reconcileEscrowTerminalStateFromChain(escrow: Escrow, attestation
     return false;
   }
 
-  const reconciledStatus: EscrowStatus = settled
-    ? (releasedToTrue ? 'released' : 'refunded')
-    : 'refunded';
+  const reconciledStatus: EscrowStatus = 'released';
 
   run(
     `UPDATE escrows
@@ -1090,39 +1079,6 @@ export async function tryAutoSettleEscrow(
   }
 }
 
-async function refundEscrowOnchain(escrow: Escrow): Promise<void> {
-  const publicClient = getPublicClient();
-  const { walletClient, account } = getRelayerClient();
-
-  const txHash = await walletClient.writeContract({
-    account,
-    chain: sepolia,
-    address: escrow.contract_address as `0x${string}`,
-    abi: ESCROW_ABI,
-    functionName: 'refundAfterTimeout',
-    args: [escrow.deal_hash as Hex],
-  });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  if (receipt.status !== 'success') {
-    throw new Error('Timeout refund transaction reverted');
-  }
-
-  run(
-    `UPDATE escrows SET status = 'refunded', refund_tx_hash = ?, last_error = NULL, updated_at = datetime('now') WHERE contract_id = ?`,
-    [txHash, escrow.contract_id]
-  );
-
-  const attestation = await createAttestation(escrow.contract_id, 'escrow_refunded_timeout', {
-    contract_id: escrow.contract_id,
-    deal_hash: escrow.deal_hash,
-    timeout_at: escrow.timeout_at,
-    tx_hash: txHash,
-    refunded_at: new Date().toISOString(),
-  });
-  run(`UPDATE escrows SET attestation_id = ?, updated_at = datetime('now') WHERE contract_id = ?`, [attestation.id, escrow.contract_id]);
-  flushDb();
-}
 
 async function schedulerTick(): Promise<void> {
   if (!isEscrowEnabled()) return;
@@ -1160,21 +1116,6 @@ async function schedulerTick(): Promise<void> {
         row.contract_attestation_data_hash ? (`0x${String(row.contract_attestation_data_hash)}` as `0x${string}`) : null
       );
       continue;
-    }
-
-    if (escrow.status === 'funded' && escrow.timeout_at <= nowIso) {
-      try {
-        await refundEscrowOnchain(escrow);
-      } catch (error: unknown) {
-        run(
-          // Keep status unchanged and capture the failure for retry/debugging.
-          `UPDATE escrows
-           SET last_error = ?, updated_at = datetime('now')
-           WHERE contract_id = ? AND status = 'funded'`,
-          [error instanceof Error ? error.message : String(error), escrow.contract_id]
-        );
-        flushDb();
-      }
     }
   }
 }

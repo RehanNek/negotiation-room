@@ -66,9 +66,6 @@ export function inferAttestationVerdict(attestation?: {
   if (payloadStatus === 'released') {
     return 'TRUE';
   }
-  if (payloadStatus === 'refunded') {
-    return 'FALSE';
-  }
 
   return undefined;
 }
