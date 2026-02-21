@@ -51,7 +51,9 @@ function escrowStatusCopy(params: {
     case 'funded':
       return 'Escrow funded onchain and waiting for verdict-triggered settlement.';
     case 'released':
-      return 'Escrow released to the service provider.';
+      return 'Escrow released to the service provider / true recipient.';
+    case 'refunded':
+      return 'Escrow refunded (false verdict or timeout).';
     case 'failed':
       return 'Escrow action failed. Retry funding or settlement.';
     default:
@@ -163,6 +165,10 @@ export default function ContractQueueCard({
   ) || contract.party_a_wallet;
   const payerWallet = escrow?.payer_wallet || inferredPayerWallet;
   const releaseRecipientWallet = escrow?.recipient_if_true_wallet || providerWallet;
+  const refundRecipientWallet = escrow?.recipient_if_false_wallet || payerWallet;
+  const refundPathLabel = escrow?.status === 'refunded'
+    ? 'Refund recipient'
+    : 'Refund fallback (FALSE verdict/timeout)';
   const isProviderViewer = Boolean(
     normalizedWallet &&
       releaseRecipientWallet &&
@@ -171,7 +177,8 @@ export default function ContractQueueCard({
   const escrowSettlementPending = Boolean(
     escrow?.status === 'funded' &&
       contract.status === 'resolved' &&
-      !escrow?.settle_tx_hash
+      !escrow?.settle_tx_hash &&
+      !escrow?.refund_tx_hash
   );
   const escrowNeedsFunding = Boolean(!escrow || escrow.status === 'awaiting_funding' || (escrow.status === 'failed' && !escrow.fund_tx_hash));
   const payerCanFundEscrow = Boolean(
@@ -184,6 +191,7 @@ export default function ContractQueueCard({
   );
   const escrowFundingCta = !escrow ? 'Prepare & Fund Escrow' : escrow.status === 'failed' ? 'Retry Escrow Funding' : 'Fund Escrow';
   const settlementTxHash = escrow?.settle_tx_hash ?? null;
+  const refundTxHash = escrow?.refund_tx_hash ?? null;
   const canAffirmService = Boolean(
     isService &&
       contract.status === 'active' &&
@@ -253,6 +261,9 @@ export default function ContractQueueCard({
             Release to provider: <span className="font-mono text-[var(--ink)]">{formatWallet(releaseRecipientWallet)}</span>
           </p>
           <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
+            {refundPathLabel}: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
+          </p>
+          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>
           </p>
           {escrow?.fund_tx_hash ? (
@@ -281,8 +292,21 @@ export default function ContractQueueCard({
               </a>
             </p>
           ) : null}
+          {refundTxHash ? (
+            <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2 md:col-span-2">
+              Refund tx:{' '}
+              <a
+                href={`${EXPLORER_TX_BASE}${refundTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[var(--ink)] underline decoration-dotted underline-offset-2"
+              >
+                {formatWallet(refundTxHash, 10, 8)}
+              </a>
+            </p>
+          ) : null}
         </div>
-        {escrow?.last_error && escrow.status !== 'released' ? (
+        {escrow?.last_error && escrow.status !== 'released' && escrow.status !== 'refunded' ? (
           <p className="mt-2 text-xs text-[var(--danger)]">Latest escrow error: {escrow.last_error}</p>
         ) : null}
       </div>
