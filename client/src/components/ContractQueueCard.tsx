@@ -261,9 +261,6 @@ export default function ContractQueueCard({
             Release to provider: <span className="font-mono text-[var(--ink)]">{formatWallet(releaseRecipientWallet)}</span>
           </p>
           <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
-            {refundPathLabel}: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
-          </p>
-          <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>
           </p>
           {escrow?.fund_tx_hash ? (
