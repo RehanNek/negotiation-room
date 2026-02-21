@@ -76,6 +76,7 @@ beforeEach(() => {
   runQuery('DELETE FROM rounds');
   runQuery('DELETE FROM conditions');
   runQuery('DELETE FROM attestations');
+  runQuery('DELETE FROM escrows');
   runQuery('DELETE FROM contracts');
   runQuery('DELETE FROM negotiations');
   runQuery('DELETE FROM reputation');
@@ -602,10 +603,12 @@ describe('Negotiation API', () => {
     const previousEscrowEnabled = process.env.ESCROW_ENABLED;
     const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
     const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
 
     process.env.ESCROW_ENABLED = 'true';
     process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
     process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'warn';
 
     try {
       const tokenA = await authTokenFor(walletA);
@@ -694,6 +697,375 @@ describe('Negotiation API', () => {
       process.env.ESCROW_ENABLED = previousEscrowEnabled;
       process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
       process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
+    }
+  });
+
+  it('warn mode does not let requester override derived service payer', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'warn';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'consulting',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'I can provide 4 strategy sessions. Payment from client escrow after approval.',
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'Agreed. I am the receiver/client for this service.',
+        });
+
+      const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+      const contractId = done.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const nextTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(nextTerms), contractId]);
+
+      const prepareByNonPayer = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenA))
+        .send({});
+
+      expect(prepareByNonPayer.status).toBe(200);
+      expect(prepareByNonPayer.body.escrow?.payer_wallet).toBe(walletB.toLowerCase());
+      expect(prepareByNonPayer.body.escrow?.recipient_if_true_wallet).toBe(walletA.toLowerCase());
+      expect(prepareByNonPayer.body.escrow?.recipient_if_false_wallet).toBe(walletB.toLowerCase());
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
+    }
+  });
+
+  it('warn mode keeps awaiting-funding escrow immutable when terms change', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'warn';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'consulting',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'I can provide 4 strategy sessions. Payment from client escrow after approval.',
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'Agreed. I am the receiver/client for this service.',
+        });
+
+      const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+      const contractId = done.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const firstTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(firstTerms), contractId]);
+
+      const firstPrepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenB))
+        .send({});
+      expect(firstPrepare.status).toBe(200);
+
+      const firstEscrow = firstPrepare.body.escrow;
+      expect(firstEscrow?.status).toBe('awaiting_funding');
+
+      const conflictingTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletA,
+          provider_wallet: walletB,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(conflictingTerms), contractId]);
+
+      const secondPrepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenA))
+        .send({});
+      expect(secondPrepare.status).toBe(200);
+      expect(secondPrepare.body.escrow?.deal_hash).toBe(firstEscrow.deal_hash);
+      expect(secondPrepare.body.escrow?.payer_wallet).toBe(firstEscrow.payer_wallet);
+      expect(secondPrepare.body.escrow?.recipient_if_true_wallet).toBe(firstEscrow.recipient_if_true_wallet);
+      expect(secondPrepare.body.escrow?.recipient_if_false_wallet).toBe(firstEscrow.recipient_if_false_wallet);
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
+    }
+  });
+
+  it('enforce mode rejects immutable routing mismatches on re-prepare', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'enforce';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'consulting',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'I can provide 4 strategy sessions. Payment from client escrow after approval.',
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'Agreed. I am the receiver/client for this service.',
+        });
+
+      const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+      const contractId = done.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const firstTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(firstTerms), contractId]);
+
+      const firstPrepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenB))
+        .send({});
+      expect(firstPrepare.status).toBe(200);
+
+      const conflictingTerms = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletA,
+          provider_wallet: walletB,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(conflictingTerms), contractId]);
+
+      const secondPrepare = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenA))
+        .send({});
+      expect(secondPrepare.status).toBe(409);
+      expect(secondPrepare.body.error).toContain('immutable');
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
+    }
+  });
+
+  it('enforce mode rejects service prepare by non-derived payer', async () => {
+    const previousEscrowEnabled = process.env.ESCROW_ENABLED;
+    const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
+    const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
+
+    process.env.ESCROW_ENABLED = 'true';
+    process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+    process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'enforce';
+
+    try {
+      const tokenA = await authTokenFor(walletA);
+      const tokenB = await authTokenFor(walletB);
+
+      const create = await request(app)
+        .post('/negotiate/create')
+        .set(authHeader(tokenA))
+        .send({
+          deal_type: 'service',
+          category: 'consulting',
+          params: {},
+          constraints: {},
+        });
+      await request(app)
+        .post('/negotiate/join')
+        .set(authHeader(tokenB))
+        .send({
+          room_id: create.body.room_id,
+          constraints: {},
+        });
+
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenA))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'I can provide 4 strategy sessions. Payment from client escrow after approval.',
+        });
+      await request(app)
+        .post('/negotiate/offer')
+        .set(authHeader(tokenB))
+        .send({
+          negotiation_id: create.body.room_id,
+          offer: 'Agreed. I am the receiver/client for this service.',
+        });
+
+      const done = await confirmDeal(create.body.room_id, tokenA, tokenB);
+      const contractId = done.body.contract?.id as string;
+      expect(contractId).toBeTruthy();
+
+      const contract = await request(app)
+        .get(`/contract/${contractId}`)
+        .set(authHeader(tokenA));
+      expect(contract.status).toBe(200);
+
+      const termsWithRoles = {
+        ...(contract.body.terms || {}),
+        agreed_terms: {
+          ...((contract.body.terms?.agreed_terms as Record<string, unknown>) || {}),
+          receiver_wallet: walletB,
+          provider_wallet: walletA,
+        },
+      };
+      runQuery('UPDATE contracts SET terms = ? WHERE id = ?', [JSON.stringify(termsWithRoles), contractId]);
+
+      const prepareByNonPayer = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenA))
+        .send({});
+      expect(prepareByNonPayer.status).toBe(403);
+      expect(prepareByNonPayer.body.error).toContain('derived escrow payer');
+
+      const prepareByPayer = await request(app)
+        .post(`/contract/${contractId}/escrow/prepare`)
+        .set(authHeader(tokenB))
+        .send({});
+      expect(prepareByPayer.status).toBe(200);
+      expect(prepareByPayer.body.escrow?.payer_wallet).toBe(walletB.toLowerCase());
+    } finally {
+      process.env.ESCROW_ENABLED = previousEscrowEnabled;
+      process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
+      process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
     }
   });
 
@@ -1102,14 +1474,16 @@ describe('Negotiation API', () => {
     expect(affirm.body.error).toContain('service receiver');
   });
 
-  it('binds service affirmation authority to the escrow payer once escrow is prepared', async () => {
+  it('binds service affirmation authority to the derived escrow payer once escrow is prepared', async () => {
     const previousEscrowEnabled = process.env.ESCROW_ENABLED;
     const previousEscrowContract = process.env.ESCROW_CONTRACT_ADDRESS;
     const previousEscrowChain = process.env.ESCROW_CHAIN_ID;
+    const previousEscrowRoutingMode = process.env.ESCROW_ROUTING_MODE;
 
     process.env.ESCROW_ENABLED = 'true';
     process.env.ESCROW_CONTRACT_ADDRESS = '0x000000000000000000000000000000000000dEaD';
     process.env.ESCROW_CHAIN_ID = '11155111';
+    process.env.ESCROW_ROUTING_MODE = 'warn';
 
     try {
       const tokenA = await authTokenFor(walletA);
@@ -1173,19 +1547,27 @@ describe('Negotiation API', () => {
         .set(authHeader(tokenA))
         .send({});
       expect(prepare.status).toBe(200);
-      expect(prepare.body.escrow?.payer_wallet).toBe(walletA.toLowerCase());
+      expect(prepare.body.escrow?.payer_wallet).toBe(walletB.toLowerCase());
 
-      const affirmByCounterparty = await request(app)
+      const affirmByNonPayer = await request(app)
+        .post(`/contract/${contractId}/affirm`)
+        .set(authHeader(tokenA))
+        .send({});
+      expect(affirmByNonPayer.status).toBe(403);
+      expect(affirmByNonPayer.body.error).toContain('escrow payer');
+
+      const affirmByDerivedPayer = await request(app)
         .post(`/contract/${contractId}/affirm`)
         .set(authHeader(tokenB))
         .send({});
 
-      expect(affirmByCounterparty.status).toBe(403);
-      expect(affirmByCounterparty.body.error).toContain('escrow payer');
+      expect(affirmByDerivedPayer.status).toBe(200);
+      expect(affirmByDerivedPayer.body.verdict).toBe('TRUE');
     } finally {
       process.env.ESCROW_ENABLED = previousEscrowEnabled;
       process.env.ESCROW_CONTRACT_ADDRESS = previousEscrowContract;
       process.env.ESCROW_CHAIN_ID = previousEscrowChain;
+      process.env.ESCROW_ROUTING_MODE = previousEscrowRoutingMode;
     }
   });
 });

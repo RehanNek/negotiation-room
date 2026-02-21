@@ -53,11 +53,58 @@ const ESCROW_ABI = parseAbi([
 let schedulerTimer: NodeJS.Timeout | null = null;
 const settleInFlightContracts = new Set<string>();
 
+export type EscrowRoutingMode = 'warn' | 'enforce';
+
+type EscrowRoutingIssueCode =
+  | 'service_explicit_payer_mismatch'
+  | 'service_explicit_provider_mismatch'
+  | 'service_requester_not_derived_payer'
+  | 'service_payer_not_participant'
+  | 'service_recipient_true_not_participant'
+  | 'service_recipient_false_not_participant'
+  | 'recipient_true_equals_payer'
+  | 'recipient_true_equals_recipient_false';
+
+type EscrowRoutingIssue = {
+  code: EscrowRoutingIssueCode;
+  detail: string;
+};
+
+export type EscrowRoutingResolution = {
+  payerWallet: string;
+  recipientIfTrueWallet: string;
+  recipientIfFalseWallet: string;
+  issues: EscrowRoutingIssue[];
+  explicitPayerWallet: string | null;
+  explicitProviderWallet: string | null;
+  requesterWallet: string | null;
+};
+
+type EscrowImmutableIssueCode =
+  | 'deal_hash_mismatch'
+  | 'chain_id_mismatch'
+  | 'amount_wei_mismatch'
+  | 'payer_wallet_mismatch'
+  | 'recipient_if_true_wallet_mismatch'
+  | 'recipient_if_false_wallet_mismatch'
+  | 'timeout_at_mismatch'
+  | 'contract_address_mismatch';
+
+type EscrowImmutableIssue = {
+  code: EscrowImmutableIssueCode;
+  detail: string;
+};
+
 function envInt(key: string, fallback: number): number {
   const raw = process.env[key];
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getEscrowRoutingMode(): EscrowRoutingMode {
+  const raw = (process.env.ESCROW_ROUTING_MODE || 'warn').trim().toLowerCase();
+  return raw === 'enforce' ? 'enforce' : 'warn';
 }
 
 export { isEscrowEnabled } from './escrow-config';
@@ -67,6 +114,10 @@ function normalizeWallet(wallet: unknown): string | null {
   const trimmed = wallet.trim();
   if (!trimmed) return null;
   return trimmed.toLowerCase();
+}
+
+function walletsEqual(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
 }
 
 function isEscrowAddress(value: string): value is `0x${string}` {
@@ -164,6 +215,305 @@ function requireWalletAddress(value: string, label: string): string {
     throw badRequest(`${label} is not a valid EVM wallet address`);
   }
   return getAddress(value).toLowerCase();
+}
+
+function isParticipantWallet(wallet: string, partyA: string, partyB: string): boolean {
+  return walletsEqual(wallet, partyA) || walletsEqual(wallet, partyB);
+}
+
+function explicitPayerWallet(terms: Record<string, any>, agreedTerms: Record<string, any>): string | null {
+  const payer = pickWallet(
+    agreedTerms.payer_wallet,
+    agreedTerms.client_wallet,
+    agreedTerms.buyer_wallet,
+    agreedTerms.requester_wallet,
+    terms.payer_wallet,
+    terms.client_wallet,
+    terms.buyer_wallet,
+    terms.requester_wallet
+  );
+  return payer ? requireWalletAddress(payer, 'payer_wallet') : null;
+}
+
+function explicitProviderWallet(terms: Record<string, any>, agreedTerms: Record<string, any>): string | null {
+  const provider = pickWallet(
+    agreedTerms.provider_wallet,
+    agreedTerms.seller_wallet,
+    agreedTerms.vendor_wallet,
+    terms.provider_wallet,
+    terms.seller_wallet,
+    terms.vendor_wallet
+  );
+  return provider ? requireWalletAddress(provider, 'provider_wallet') : null;
+}
+
+export function resolveEscrowRouting(params: {
+  dealType: string;
+  partyA: string;
+  partyB: string;
+  requesterWallet?: string;
+  terms: Record<string, any>;
+  agreedTerms: Record<string, any>;
+  serviceRoles: { receiverWallet: string; providerWallet: string } | null;
+}): EscrowRoutingResolution {
+  const {
+    dealType,
+    partyA,
+    partyB,
+    requesterWallet,
+    terms,
+    agreedTerms,
+    serviceRoles,
+  } = params;
+  const issues: EscrowRoutingIssue[] = [];
+  const requesterNormalized = normalizeWallet(requesterWallet);
+
+  let payerWallet: string;
+  let recipientIfTrueWallet: string;
+  let recipientIfFalseWallet: string;
+  let explicitPayer: string | null = null;
+  let explicitProvider: string | null = null;
+
+  if (dealType === 'service') {
+    if (!serviceRoles) {
+      throw badRequest('Service roles are required to derive escrow routing');
+    }
+
+    const derivedPayer = requireWalletAddress(serviceRoles.receiverWallet, 'service receiver wallet');
+    const derivedProvider = requireWalletAddress(serviceRoles.providerWallet, 'service provider wallet');
+    explicitPayer = explicitPayerWallet(terms, agreedTerms);
+    explicitProvider = explicitProviderWallet(terms, agreedTerms);
+
+    if (explicitPayer && !walletsEqual(explicitPayer, derivedPayer)) {
+      issues.push({
+        code: 'service_explicit_payer_mismatch',
+        detail: `Explicit payer ${explicitPayer} differs from derived receiver payer ${derivedPayer}`,
+      });
+    }
+
+    if (explicitProvider && !walletsEqual(explicitProvider, derivedProvider)) {
+      issues.push({
+        code: 'service_explicit_provider_mismatch',
+        detail: `Explicit provider ${explicitProvider} differs from derived provider ${derivedProvider}`,
+      });
+    }
+
+    if (requesterNormalized && !walletsEqual(requesterNormalized, derivedPayer)) {
+      issues.push({
+        code: 'service_requester_not_derived_payer',
+        detail: `Requester ${requesterNormalized} is not the derived service payer ${derivedPayer}`,
+      });
+    }
+
+    payerWallet = derivedPayer;
+    recipientIfTrueWallet = derivedProvider;
+    recipientIfFalseWallet = derivedPayer;
+
+    if (!isParticipantWallet(payerWallet, partyA, partyB)) {
+      issues.push({
+        code: 'service_payer_not_participant',
+        detail: `Derived payer ${payerWallet} is not one of contract participants`,
+      });
+    }
+    if (!isParticipantWallet(recipientIfTrueWallet, partyA, partyB)) {
+      issues.push({
+        code: 'service_recipient_true_not_participant',
+        detail: `Derived release recipient ${recipientIfTrueWallet} is not one of contract participants`,
+      });
+    }
+    if (!isParticipantWallet(recipientIfFalseWallet, partyA, partyB)) {
+      issues.push({
+        code: 'service_recipient_false_not_participant',
+        detail: `Derived refund recipient ${recipientIfFalseWallet} is not one of contract participants`,
+      });
+    }
+  } else {
+    const payer = pickWallet(
+      agreedTerms.payer_wallet,
+      agreedTerms.client_wallet,
+      agreedTerms.buyer_wallet,
+      agreedTerms.requester_wallet,
+      terms.payer_wallet,
+      terms.client_wallet,
+      terms.buyer_wallet,
+      terms.requester_wallet,
+      partyA
+    );
+    if (!payer) throw badRequest('Unable to determine payer wallet for escrow');
+    payerWallet = requireWalletAddress(payer, 'payer_wallet');
+
+    const counterparty = payerWallet === partyA ? partyB : partyA;
+    const recipientTrue = pickWallet(
+      agreedTerms.recipient_if_true_wallet,
+      terms.recipient_if_true_wallet,
+      counterparty
+    ) || counterparty;
+    const recipientFalse = pickWallet(
+      agreedTerms.recipient_if_false_wallet,
+      terms.recipient_if_false_wallet,
+      payerWallet
+    ) || payerWallet;
+    recipientIfTrueWallet = requireWalletAddress(recipientTrue, 'recipient_if_true_wallet');
+    recipientIfFalseWallet = requireWalletAddress(recipientFalse, 'recipient_if_false_wallet');
+  }
+
+  if (walletsEqual(recipientIfTrueWallet, payerWallet)) {
+    issues.push({
+      code: 'recipient_true_equals_payer',
+      detail: `Release recipient ${recipientIfTrueWallet} must differ from payer ${payerWallet}`,
+    });
+  }
+  if (walletsEqual(recipientIfTrueWallet, recipientIfFalseWallet)) {
+    issues.push({
+      code: 'recipient_true_equals_recipient_false',
+      detail: `Release recipient ${recipientIfTrueWallet} must differ from refund recipient ${recipientIfFalseWallet}`,
+    });
+  }
+
+  return {
+    payerWallet,
+    recipientIfTrueWallet,
+    recipientIfFalseWallet,
+    issues,
+    explicitPayerWallet: explicitPayer,
+    explicitProviderWallet: explicitProvider,
+    requesterWallet: requesterNormalized,
+  };
+}
+
+function logEscrowRoutingMismatch(params: {
+  contractId: string;
+  mode: EscrowRoutingMode;
+  issues: EscrowRoutingIssue[];
+  routing: EscrowRoutingResolution;
+  dealHash: `0x${string}`;
+}): void {
+  const { contractId, mode, issues, routing, dealHash } = params;
+  console.warn('ESCROW_ROUTING_MISMATCH', {
+    contract_id: contractId,
+    mode,
+    reason_codes: issues.map((issue) => issue.code),
+    details: issues.map((issue) => issue.detail),
+    requester_wallet: routing.requesterWallet,
+    explicit_payer_wallet: routing.explicitPayerWallet,
+    explicit_provider_wallet: routing.explicitProviderWallet,
+    derived: {
+      payer_wallet: routing.payerWallet,
+      recipient_if_true_wallet: routing.recipientIfTrueWallet,
+      recipient_if_false_wallet: routing.recipientIfFalseWallet,
+      deal_hash: dealHash,
+    },
+  });
+}
+
+function immutableEscrowIssues(existing: Escrow, derived: {
+  dealHash: `0x${string}`;
+  chainId: number;
+  amountWei: string;
+  payerWallet: string;
+  recipientIfTrueWallet: string;
+  recipientIfFalseWallet: string;
+  timeoutAtIso: string;
+  contractAddress: string;
+}): EscrowImmutableIssue[] {
+  const issues: EscrowImmutableIssue[] = [];
+
+  if (!walletsEqual(existing.deal_hash, derived.dealHash)) {
+    issues.push({
+      code: 'deal_hash_mismatch',
+      detail: `Existing deal hash ${existing.deal_hash} differs from derived ${derived.dealHash}`,
+    });
+  }
+  if (existing.chain_id !== derived.chainId) {
+    issues.push({
+      code: 'chain_id_mismatch',
+      detail: `Existing chain_id ${existing.chain_id} differs from derived ${derived.chainId}`,
+    });
+  }
+  if (existing.amount_wei !== derived.amountWei) {
+    issues.push({
+      code: 'amount_wei_mismatch',
+      detail: `Existing amount_wei ${existing.amount_wei} differs from derived ${derived.amountWei}`,
+    });
+  }
+  if (!walletsEqual(existing.payer_wallet, derived.payerWallet)) {
+    issues.push({
+      code: 'payer_wallet_mismatch',
+      detail: `Existing payer ${existing.payer_wallet} differs from derived ${derived.payerWallet}`,
+    });
+  }
+  if (!walletsEqual(existing.recipient_if_true_wallet, derived.recipientIfTrueWallet)) {
+    issues.push({
+      code: 'recipient_if_true_wallet_mismatch',
+      detail: `Existing recipient_if_true ${existing.recipient_if_true_wallet} differs from derived ${derived.recipientIfTrueWallet}`,
+    });
+  }
+  if (!walletsEqual(existing.recipient_if_false_wallet, derived.recipientIfFalseWallet)) {
+    issues.push({
+      code: 'recipient_if_false_wallet_mismatch',
+      detail: `Existing recipient_if_false ${existing.recipient_if_false_wallet} differs from derived ${derived.recipientIfFalseWallet}`,
+    });
+  }
+  if (existing.timeout_at !== derived.timeoutAtIso) {
+    issues.push({
+      code: 'timeout_at_mismatch',
+      detail: `Existing timeout_at ${existing.timeout_at} differs from derived ${derived.timeoutAtIso}`,
+    });
+  }
+  if (!walletsEqual(existing.contract_address, derived.contractAddress)) {
+    issues.push({
+      code: 'contract_address_mismatch',
+      detail: `Existing contract address ${existing.contract_address} differs from derived ${derived.contractAddress}`,
+    });
+  }
+
+  return issues;
+}
+
+function logEscrowPrepareImmutableMismatch(params: {
+  contractId: string;
+  mode: EscrowRoutingMode;
+  issues: EscrowImmutableIssue[];
+  existing: Escrow;
+  derived: {
+    dealHash: `0x${string}`;
+    chainId: number;
+    amountWei: string;
+    payerWallet: string;
+    recipientIfTrueWallet: string;
+    recipientIfFalseWallet: string;
+    timeoutAtIso: string;
+    contractAddress: string;
+  };
+}): void {
+  const { contractId, mode, issues, existing, derived } = params;
+  console.warn('ESCROW_PREPARE_IMMUTABLE_MISMATCH', {
+    contract_id: contractId,
+    mode,
+    reason_codes: issues.map((issue) => issue.code),
+    details: issues.map((issue) => issue.detail),
+    existing: {
+      deal_hash: existing.deal_hash,
+      chain_id: existing.chain_id,
+      amount_wei: existing.amount_wei,
+      payer_wallet: existing.payer_wallet,
+      recipient_if_true_wallet: existing.recipient_if_true_wallet,
+      recipient_if_false_wallet: existing.recipient_if_false_wallet,
+      timeout_at: existing.timeout_at,
+      contract_address: existing.contract_address,
+      status: existing.status,
+    },
+    derived: {
+      deal_hash: derived.dealHash,
+      chain_id: derived.chainId,
+      amount_wei: derived.amountWei,
+      payer_wallet: derived.payerWallet,
+      recipient_if_true_wallet: derived.recipientIfTrueWallet,
+      recipient_if_false_wallet: derived.recipientIfFalseWallet,
+      timeout_at: derived.timeoutAtIso,
+      contract_address: derived.contractAddress,
+    },
+  });
 }
 
 function parseAmountWei(terms: Record<string, any>, agreedTerms: Record<string, any>): bigint {
@@ -311,60 +661,35 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
       agreedTerms,
     })
     : null;
-
-  const payer = pickWallet(
-    agreedTerms.payer_wallet,
-    agreedTerms.client_wallet,
-    agreedTerms.buyer_wallet,
-    agreedTerms.requester_wallet,
-    terms.payer_wallet,
-    terms.client_wallet,
-    terms.buyer_wallet,
-    terms.requester_wallet,
+  const routingMode = getEscrowRoutingMode();
+  const routing = resolveEscrowRouting({
+    dealType: String(contract.deal_type),
+    partyA,
+    partyB,
     requesterWallet,
-    serviceRoles?.receiverWallet,
-    contract.party_a_wallet
-  );
-  if (!payer) throw badRequest('Unable to determine payer wallet for escrow');
-  const payerWallet = requireWalletAddress(payer, 'payer_wallet');
+    terms,
+    agreedTerms,
+    serviceRoles,
+  });
+  const payerWallet = routing.payerWallet;
+  const recipientIfTrue = routing.recipientIfTrueWallet;
+  const recipientIfFalse = routing.recipientIfFalseWallet;
 
-  let recipientIfTrue: string;
-  let recipientIfFalse: string;
-
-  if (serviceRoles) {
-    if (payerWallet !== partyA && payerWallet !== partyB) {
-      throw badRequest('Service escrow payer must be one of the contract participants');
-    }
-
-    const counterparty = payerWallet === partyA ? partyB : partyA;
-    const providerFallback = serviceRoles.providerWallet === payerWallet ? counterparty : serviceRoles.providerWallet;
-    recipientIfTrue = pickWallet(
-      agreedTerms.provider_wallet,
-      agreedTerms.seller_wallet,
-      agreedTerms.vendor_wallet,
-      terms.provider_wallet,
-      terms.seller_wallet,
-      terms.vendor_wallet,
-      providerFallback,
-      counterparty
-    ) || counterparty;
-    recipientIfFalse = payerWallet;
-  } else {
-    const counterparty = payerWallet === partyA ? partyB : partyA;
-
-    recipientIfTrue = pickWallet(agreedTerms.recipient_if_true_wallet, terms.recipient_if_true_wallet, counterparty) || counterparty;
-    recipientIfFalse = pickWallet(agreedTerms.recipient_if_false_wallet, terms.recipient_if_false_wallet, payerWallet) || payerWallet;
+  const authIssues = routing.issues.filter((issue) => issue.code === 'service_requester_not_derived_payer');
+  if (authIssues.length > 0 && routingMode === 'enforce') {
+    throw forbidden('Only the derived escrow payer (service receiver) can prepare escrow');
   }
 
-  recipientIfTrue = requireWalletAddress(recipientIfTrue, 'recipient_if_true_wallet');
-  recipientIfFalse = requireWalletAddress(recipientIfFalse, 'recipient_if_false_wallet');
-
-  if (serviceRoles && recipientIfTrue !== partyA && recipientIfTrue !== partyB) {
-    throw badRequest('Service provider wallet must be one of the contract participants');
-  }
+  const existingRow = get('SELECT * FROM escrows WHERE contract_id = ?', [contractId]);
+  const existingEscrow = existingRow ? toEscrowModel(existingRow) : null;
 
   const amountWei = parseAmountWei(terms, agreedTerms);
-  const timeout = parseTimeout(contract, terms, agreedTerms);
+  const timeout = existingEscrow
+    ? {
+      timeoutAtIso: existingEscrow.timeout_at,
+      timeoutUnix: BigInt(Math.floor(new Date(existingEscrow.timeout_at).getTime() / 1000)),
+    }
+    : parseTimeout(contract, terms, agreedTerms);
   const termsHash = String(contract.terms_hash || computeTermsHash(terms));
   const dealHash = computeDealHash({
     contractId,
@@ -376,31 +701,61 @@ export async function prepareEscrow(contractId: string, requesterWallet?: string
     timeoutAt: timeout.timeoutAtIso,
   });
 
-  const existingRow = get('SELECT * FROM escrows WHERE contract_id = ?', [contractId]);
+  if (routing.issues.length > 0) {
+    logEscrowRoutingMismatch({
+      contractId,
+      mode: routingMode,
+      issues: routing.issues,
+      routing,
+      dealHash,
+    });
 
-  if (existingRow) {
-    const existing = toEscrowModel(existingRow);
-    if (existing.status !== 'awaiting_funding' && existing.status !== 'failed') {
-      const fundTx = buildFundTx(existing, BigInt(Math.floor(new Date(existing.timeout_at).getTime() / 1000)));
-      return { escrow: existing, fund_tx: fundTx };
+    const nonAuthIssues = routing.issues.filter((issue) => issue.code !== 'service_requester_not_derived_payer');
+    if (nonAuthIssues.length > 0 && routingMode === 'enforce') {
+      throw conflict('Escrow routing mismatch detected. Align contract roles and wallets before preparing escrow.');
+    }
+  }
+
+  if (existingEscrow) {
+    const fundTx = buildFundTx(existingEscrow, timeout.timeoutUnix);
+    if (existingEscrow.status !== 'awaiting_funding' && existingEscrow.status !== 'failed') {
+      return { escrow: existingEscrow, fund_tx: fundTx };
     }
 
-    run(
-      `UPDATE escrows
-       SET deal_hash = ?, chain_id = ?, amount_wei = ?, payer_wallet = ?, recipient_if_true_wallet = ?, recipient_if_false_wallet = ?, timeout_at = ?, contract_address = ?, status = 'awaiting_funding', last_error = NULL, updated_at = datetime('now')
-       WHERE contract_id = ?`,
-      [
-        dealHash,
-        chainId,
-        amountWei.toString(),
-        payerWallet,
-        recipientIfTrue,
-        recipientIfFalse,
-        timeout.timeoutAtIso,
-        contractAddress,
+    const immutableIssues = immutableEscrowIssues(existingEscrow, {
+      dealHash,
+      chainId,
+      amountWei: amountWei.toString(),
+      payerWallet,
+      recipientIfTrueWallet: recipientIfTrue,
+      recipientIfFalseWallet: recipientIfFalse,
+      timeoutAtIso: timeout.timeoutAtIso,
+      contractAddress,
+    });
+
+    if (immutableIssues.length > 0) {
+      logEscrowPrepareImmutableMismatch({
         contractId,
-      ]
-    );
+        mode: routingMode,
+        issues: immutableIssues,
+        existing: existingEscrow,
+        derived: {
+          dealHash,
+          chainId,
+          amountWei: amountWei.toString(),
+          payerWallet,
+          recipientIfTrueWallet: recipientIfTrue,
+          recipientIfFalseWallet: recipientIfFalse,
+          timeoutAtIso: timeout.timeoutAtIso,
+          contractAddress,
+        },
+      });
+      if (routingMode === 'enforce') {
+        throw conflict('Escrow is already prepared with immutable routing/terms. Create a new agreement before re-preparing.');
+      }
+    }
+
+    return { escrow: existingEscrow, fund_tx: fundTx };
   } else {
     const escrowId = uuidv4();
     run(

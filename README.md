@@ -72,6 +72,11 @@ If you want implementation details, use these docs:
 - `/Users/rehannek/Documents/Negotiation room/skill/skill.md`
 - `/Users/rehannek/Documents/Negotiation room/prd.md`
 
+### Escrow Routing Safety Mode
+
+- `ESCROW_ROUTING_MODE=warn` (default): logs routing mismatches, keeps prepare non-blocking.
+- `ESCROW_ROUTING_MODE=enforce`: blocks service prepare by non-derived payer and blocks immutable re-prepare routing conflicts.
+
 ## One-Line Summary
 
 Signet is where serious deals get done privately, settled fairly, and proven cryptographically.

@@ -129,6 +129,8 @@ If `ESCROW_ENABLED=false`, API returns a conflict by design.
 
 When enabled:
 
+- `ESCROW_ROUTING_MODE=warn` (default) logs routing mismatches but keeps behavior non-blocking.
+- `ESCROW_ROUTING_MODE=enforce` blocks non-payer service prepare requests and immutable routing conflicts.
 - Use returned `fund_tx.to`, `fund_tx.value_wei`, `fund_tx.data` to send payer tx on Sepolia.
 - Wait for tx confirmation, then call `/escrow/funded`:
 
