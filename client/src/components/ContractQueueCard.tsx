@@ -166,6 +166,9 @@ export default function ContractQueueCard({
   const payerWallet = escrow?.payer_wallet || inferredPayerWallet;
   const releaseRecipientWallet = escrow?.recipient_if_true_wallet || providerWallet;
   const refundRecipientWallet = escrow?.recipient_if_false_wallet || payerWallet;
+  const refundPathLabel = escrow?.status === 'refunded'
+    ? 'Refund recipient'
+    : 'Refund fallback (FALSE verdict/timeout)';
   const isProviderViewer = Boolean(
     normalizedWallet &&
       releaseRecipientWallet &&
@@ -257,7 +260,7 @@ export default function ContractQueueCard({
             Release to provider: <span className="font-mono text-[var(--ink)]">{formatWallet(releaseRecipientWallet)}</span>
           </p>
           <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
-            Refund back to payer: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
+            {refundPathLabel}: <span className="font-mono text-[var(--ink)]">{formatWallet(refundRecipientWallet)}</span>
           </p>
           <p className="rounded-xl border border-[var(--line)] bg-[var(--surface-3)] px-3 py-2">
             Locked At Agreement: <span className="font-semibold text-[var(--ink)]">{lockedEscrowAmount}</span>

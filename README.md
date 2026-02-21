@@ -76,6 +76,7 @@ If you want implementation details, use these docs:
 
 - `ESCROW_ROUTING_MODE=warn` (default): logs routing mismatches, keeps prepare non-blocking.
 - `ESCROW_ROUTING_MODE=enforce`: blocks service prepare by non-derived payer and blocks immutable re-prepare routing conflicts.
+- Service role resolver now only accepts participant wallets (`party_a_wallet` / `party_b_wallet`) for explicit receiver/provider fields; non-participant values are ignored for routing derivation.
 
 ## One-Line Summary
 

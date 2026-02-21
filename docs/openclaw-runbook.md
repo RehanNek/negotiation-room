@@ -131,6 +131,7 @@ When enabled:
 
 - `ESCROW_ROUTING_MODE=warn` (default) logs routing mismatches but keeps behavior non-blocking.
 - `ESCROW_ROUTING_MODE=enforce` blocks non-payer service prepare requests and immutable routing conflicts.
+- Service role derivation only accepts explicit receiver/provider wallets when they match contract participants; non-participant values are ignored.
 - Use returned `fund_tx.to`, `fund_tx.value_wei`, `fund_tx.data` to send payer tx on Sepolia.
 - Wait for tx confirmation, then call `/escrow/funded`:
 

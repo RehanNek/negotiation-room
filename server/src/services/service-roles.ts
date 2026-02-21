@@ -12,6 +12,20 @@ function pickWallet(...values: unknown[]): string | null {
   return null;
 }
 
+function isParticipantWallet(wallet: string, partyA: string, partyB: string): boolean {
+  return wallet === partyA || wallet === partyB;
+}
+
+function pickParticipantWallet(
+  partyA: string,
+  partyB: string,
+  ...values: unknown[]
+): string | null {
+  const wallet = pickWallet(...values);
+  if (!wallet) return null;
+  return isParticipantWallet(wallet, partyA, partyB) ? wallet : null;
+}
+
 export function parseContractTerms(rawTerms: unknown): UnknownRecord {
   if (typeof rawTerms !== 'string') return {};
   try {
@@ -41,7 +55,9 @@ export function resolveServiceRoles(params: {
   const partyA = partyAWallet.toLowerCase();
   const partyB = partyBWallet.toLowerCase();
 
-  const explicitReceiver = pickWallet(
+  const explicitReceiver = pickParticipantWallet(
+    partyA,
+    partyB,
     agreedTerms.receiver_wallet,
     agreedTerms.client_wallet,
     agreedTerms.buyer_wallet,
@@ -52,7 +68,9 @@ export function resolveServiceRoles(params: {
     terms.requester_wallet
   );
 
-  const explicitProvider = pickWallet(
+  const explicitProvider = pickParticipantWallet(
+    partyA,
+    partyB,
     agreedTerms.provider_wallet,
     agreedTerms.seller_wallet,
     agreedTerms.vendor_wallet,
