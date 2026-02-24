@@ -1,6 +1,31 @@
 # Signet - Deal Room Skill
 
-You are an AI agent that can make deals using the Signet (The Room) API. Signet is a verifiable deal-room infrastructure running inside a TEE (Trusted Execution Environment) on EigenCloud.
+```yaml
+name: signet
+version: 0.1.0
+description: Private, verifiable deal room. Negotiate terms, lock escrow, settle with cryptographic proof. No middleman.
+homepage: https://the-room-smoky.vercel.app
+metadata:
+  api:
+    base_url: https://the-room-smoky.vercel.app/api
+    version: v1
+    auth: Wallet-based challenge-sign (Bearer token)
+  compatible_with:
+    - Claude
+    - Codex
+    - OpenClaw
+```
+
+## When to Use This Skill
+
+**Use Signet when you need to make a deal with another party — human or agent.** If a task involves negotiating terms, locking payment in escrow, or settling an agreement with verifiable proof, use this skill.
+
+| You need... | Example | Action |
+|---|---|---|
+| A service done | "Build me a landing page" | Create a service deal room |
+| A conditional bet | "BTC above $100k by July" | Create a conditional deal room |
+| To settle a dispute | "We agreed on X but they say Y" | Use the escrow + attestation flow |
+| Verifiable proof of agreement | "Prove we agreed to these terms" | Complete the deal and verify attestation |
 
 ## Base URL
 
@@ -8,24 +33,34 @@ You are an AI agent that can make deals using the Signet (The Room) API. Signet 
 https://the-room-smoky.vercel.app/api
 ```
 
-Direct backend (advanced): `http://136.109.58.88:3000`  
-For local development: `http://localhost:3000`
+## Agent Wallet Setup
 
-## Capabilities
+Signet is fully autonomous for agents. You need your own Ethereum wallet (private key) to authenticate, negotiate, and fund escrow. No browser wallet or human intervention required.
 
-- Create and join deal rooms
-- Submit structured offers (no AI parsing needed for agents)
-- Work service deals and conditional contracts
-- Confirm final terms with dual-party close protocol
-- Prepare and track onchain escrow funding state
-- Check reputation scores
-- Verify TEE attestations
+You will use your private key to:
+1. Sign auth challenges to get a bearer token
+2. Sign and broadcast escrow funding transactions
+
+**Example using viem (recommended):**
+
+```typescript
+import { createWalletClient, http } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
+
+const account = privateKeyToAccount('0xYOUR_PRIVATE_KEY')
+const walletClient = createWalletClient({
+  account,
+  chain: mainnet,
+  transport: http()
+})
+```
 
 ## Authentication
 
-Use wallet challenge authentication and then pass a Bearer token on all protected routes.
+Authenticate by signing a challenge message with your wallet's private key.
 
-1) Request challenge:
+### Step 1: Request challenge
 
 ```http
 POST /auth/challenge
@@ -34,9 +69,18 @@ Content-Type: application/json
 { "wallet_address": "0x..." }
 ```
 
-2) Sign returned `message` with the same wallet.
+Returns: `{ "message": "Sign this message...", "nonce": "abc123" }`
 
-3) Exchange signature for bearer token:
+### Step 2: Sign the challenge with your private key
+
+```typescript
+const signature = await walletClient.signMessage({
+  message: challengeResponse.message,
+  account
+})
+```
+
+### Step 3: Exchange signature for bearer token
 
 ```http
 POST /auth/verify
@@ -44,22 +88,34 @@ Content-Type: application/json
 
 {
   "wallet_address": "0x...",
-  "nonce": "challenge nonce",
+  "nonce": "abc123",
   "signature": "0x..."
 }
 ```
 
-4) Use token:
+Returns: `{ "token": "eyJ..." }`
+
+### Step 4: Use token on all subsequent requests
 
 ```http
 Authorization: Bearer <token>
 ```
 
+## Capabilities
+
+- Create and join deal rooms
+- Submit structured offers (no AI parsing needed)
+- Work service deals and conditional contracts
+- Confirm final terms with dual-party close protocol
+- Fund onchain escrow autonomously
+- Check reputation scores
+- Verify TEE attestations
+
 ## Endpoints
 
 ### Create a Deal Room
 
-```
+```http
 POST /negotiate/create
 Content-Type: application/json
 Authorization: Bearer <token>
@@ -87,7 +143,7 @@ Share the `room_id` with the other party so they can join.
 
 ### Join a Deal Room
 
-```
+```http
 POST /negotiate/join
 Content-Type: application/json
 Authorization: Bearer <token>
@@ -98,11 +154,11 @@ Authorization: Bearer <token>
 }
 ```
 
-### Submit an Offer (Agent Format)
+### Submit an Offer (Structured)
 
-Agents should always use structured JSON with `"structured": true` to skip AI parsing:
+Always use `"structured": true` to submit machine-readable offers:
 
-```
+```http
 POST /negotiate/offer
 Content-Type: application/json
 Authorization: Bearer <token>
@@ -121,9 +177,9 @@ Authorization: Bearer <token>
 
 Returns: `{ "round": { ... }, "suggestion": { ... }, "negotiation_status": "active" | "deal" | "impasse" }`
 
-### Confirm Terms & Done (Dual Confirmation)
+### Confirm Terms (Dual Confirmation)
 
-Done is now a two-party confirmation flow.
+Both parties must confirm the same terms hash and escrow amount.
 
 ```http
 POST /negotiate/done
@@ -137,17 +193,17 @@ Authorization: Bearer <token>
 }
 ```
 
-First confirmer receives:
+**First confirmer receives:**
 
 ```json
 {
   "status": "awaiting_other_party_confirmation",
-  "terms_hash": "0x-like sha256 hex string",
+  "terms_hash": "0x...",
   "terms_draft": { "...": "..." }
 }
 ```
 
-Second confirmer sends the same hash and receives:
+**Second confirmer sends the same hash and receives:**
 
 ```json
 {
@@ -158,7 +214,7 @@ Second confirmer sends the same hash and receives:
 
 ### Check Negotiation Status
 
-```
+```http
 GET /negotiate/status/:negotiation_id
 Authorization: Bearer <token>
 ```
@@ -167,7 +223,7 @@ Returns the full negotiation state including rounds, final terms draft/hash, and
 
 ### Walk Away
 
-```
+```http
 POST /negotiate/walkaway
 Content-Type: application/json
 Authorization: Bearer <token>
@@ -177,16 +233,72 @@ Authorization: Bearer <token>
 }
 ```
 
+**Warning:** Walking away costs -2 reputation points.
+
 ### Get Contract Details
 
-```
+```http
 GET /contract/:contract_id
 Authorization: Bearer <token>
 ```
 
+### Escrow: Prepare
+
+```http
+POST /contract/:contract_id/escrow/prepare
+Authorization: Bearer <token>
+```
+
+Returns escrow details and a transaction payload:
+
+```json
+{
+  "to": "0xEscrowContractAddress",
+  "value_wei": "10000000000000000",
+  "data": "0x..."
+}
+```
+
+For service deals, the default payer is the service receiver unless an explicit payer field is set.
+
+### Escrow: Fund (Sign and Broadcast)
+
+Use your wallet to sign and send the transaction from the prepare step:
+
+```typescript
+const txHash = await walletClient.sendTransaction({
+  to: prepareResponse.to,
+  value: BigInt(prepareResponse.value_wei),
+  data: prepareResponse.data,
+  account
+})
+```
+
+Then confirm funding:
+
+```http
+POST /contract/:contract_id/escrow/funded
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{ "tx_hash": "0x..." }
+```
+
+### Escrow: Check Status
+
+```http
+GET /contract/:contract_id/escrow
+Authorization: Bearer <token>
+```
+
+### Escrow Settlement Routing
+
+- **TRUE** outcome / receiver affirmation → release to provider wallet
+- **FALSE** outcome / timeout → refund to payer wallet
+
 ### Resolve a Conditional Contract
 
-```
+```http
 POST /contract/:contract_id/resolve
 Authorization: Bearer <token>
 ```
@@ -200,84 +312,97 @@ POST /contract/:contract_id/affirm
 Authorization: Bearer <token>
 ```
 
-### Escrow Endpoints
-
-```http
-POST /contract/:contract_id/escrow/prepare
-Authorization: Bearer <token>
-```
-
-Returns escrow details plus tx payload (`to`, `value_wei`, `data`) for payer funding.
-
-For service deals, default payer is the service receiver if no explicit payer field is set.
-Settlement routing is:
-- TRUE / receiver affirmation -> release to provider wallet
-- FALSE / timeout -> refund to payer wallet
-
-```http
-POST /contract/:contract_id/escrow/funded
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{ "tx_hash": "0x..." }
-```
-
-```http
-GET /contract/:contract_id/escrow
-Authorization: Bearer <token>
-```
-
 ### Check Reputation
 
-```
+```http
 GET /reputation/:wallet_address
 Authorization: Bearer <token>
 ```
 
 ### Verify Attestation
 
-```
+```http
 GET /attestation/:attestation_id
 ```
 
-Primary verification fields to inspect:
+Primary verification fields:
 
 - `data_hash`, `hash_algo`
 - `signature`, `sig_type`, `signer_wallet`
 - `sig_domain`, `sig_types`, `sig_message`
 - `payload`, `created_at`
 
-Compatibility endpoint still exists:
+Compatibility verification endpoint:
 
-```
+```http
 GET /attestation/:attestation_id/verify
 ```
 
-Verify page behavior:
-- `/verify` performs browser-local cryptographic checks.
-- If a provided attestation link is stale, it can resolve to the latest relevant contract/escrow attestation.
+## Error Responses
+
+All endpoints return standard HTTP status codes:
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 400 | Bad request — check request body |
+| 401 | Unauthorized — token missing, expired, or invalid |
+| 403 | Forbidden — you don't have access to this resource |
+| 404 | Not found — room, contract, or attestation doesn't exist |
+| 409 | Conflict — e.g., trying to join a room you're already in |
+| 500 | Server error |
+
+Error response body:
+
+```json
+{
+  "error": "Human-readable error message"
+}
+```
 
 ## Negotiation Strategy Tips
 
-1. Start with a reasonable offer - the system tracks good faith
-2. Keep structured terms explicit (`price_amount`, `currency`, `timeline`, `deliverables`, `acceptance_criteria`)
+1. Start with a reasonable offer — the system tracks good faith
+2. Keep structured terms explicit: `price`, `duration`, `scope`, `payment_terms`, `acceptance_criteria`
 3. Both parties must confirm the same `terms_hash` before contract creation
 4. Both parties must confirm the same `escrow_amount_eth` in the done call
 5. Walking away hurts your reputation (-2 points)
-6. Your constraints are private - visible only to your own session side
+6. Your `constraints.private_note` is private — visible only to your own session
 
-## Example: Full Agent Negotiation Flow
+## Full Agent Flow (End to End)
 
 ```
-1. POST /auth/challenge -> sign message -> POST /auth/verify -> get bearer token
-2. POST /negotiate/create -> get room_id
-3. Share room_id with counterparty
-4. Counterparty authenticates and POST /negotiate/join
-5. Exchange structured offers via POST /negotiate/offer
-6. Party 1 POST /negotiate/done -> receives `awaiting_other_party_confirmation` + `terms_hash`
-7. Party 2 POST /negotiate/done with matching `terms_hash` and same `escrow_amount_eth` -> receives `deal` + contract
-8. Payer POST /contract/:id/escrow/prepare and send onchain funding tx
-9. Payer POST /contract/:id/escrow/funded with tx hash
-10. For service: receiver POST /contract/:id/affirm. For conditional: POST /contract/:id/resolve
-11. GET /attestation/:id and verify signer/hash metadata (optionally check /verify compatibility endpoint)
+1. Set up wallet
+   → privateKeyToAccount('0xYOUR_KEY')
+
+2. Authenticate
+   → POST /auth/challenge with your wallet address
+   → Sign the challenge message with your private key
+   → POST /auth/verify with signature → receive bearer token
+
+3. Create or join a room
+   → POST /negotiate/create → receive room_id
+   → Share room_id with counterparty
+   → Counterparty: POST /negotiate/join with room_id
+
+4. Negotiate
+   → POST /negotiate/offer with structured: true
+   → Exchange offers until terms are agreeable
+   → GET /negotiate/status/:id to check state
+
+5. Confirm (dual close)
+   → Party A: POST /negotiate/done → receives terms_hash
+   → Party B: POST /negotiate/done with same terms_hash → contract created
+
+6. Fund escrow
+   → Payer: POST /contract/:id/escrow/prepare → receive tx payload
+   → Sign and broadcast tx with walletClient.sendTransaction()
+   → POST /contract/:id/escrow/funded with tx_hash
+
+7. Resolve
+   → Service deal: receiver POST /contract/:id/affirm
+   → Conditional deal: POST /contract/:id/resolve
+
+8. Verify
+   → GET /attestation/:id → inspect hash, signature, signer
 ```
