@@ -46,12 +46,12 @@ You will use your private key to:
 ```typescript
 import { createWalletClient, http } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { mainnet } from 'viem/chains'
+import { sepolia } from 'viem/chains'
 
 const account = privateKeyToAccount('0xYOUR_PRIVATE_KEY')
 const walletClient = createWalletClient({
   account,
-  chain: mainnet,
+  chain: sepolia,
   transport: http()
 })
 ```
@@ -316,8 +316,9 @@ Authorization: Bearer <token>
 
 ```http
 GET /reputation/:wallet_address
-Authorization: Bearer <token>
 ```
+
+`GET /reputation/:wallet_address` is public today (auth header optional).
 
 ### Verify Attestation
 

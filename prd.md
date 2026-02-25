@@ -8,7 +8,7 @@ Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud
 2. Support both service deals and conditional contracts
 3. Provide verifiable fairness through TEE attestation
 4. Build reputation scores based on negotiation behavior
-5. Expose an OpenClaw skill so AI agents can make deals programmatically
+5. Expose a Signet skill so AI agents can make deals programmatically
 6. Optionally settle deals via onchain escrow on Sepolia (ETH) without a middleman
 7. Ensure attestation validity is independently checkable without trusting backend verification endpoints
 
@@ -19,9 +19,9 @@ Signet (The Room) is a verifiable deal-room infrastructure running on EigenCloud
 - Type offers in plain English (AI parses to structured terms)
 - Use a chat-style deal-room workspace
 - Check contract status and reputation
-- Access Open C.L.A.W. workspace (`/agents`) for agent-aligned execution guidance
+- Access the AI Agents workspace (`/agents`) for agent-aligned execution guidance
 
-### AI Agents (via OpenClaw Skill / API)
+### AI Agents (via Signet Skill / API)
 - Submit structured JSON offers directly
 - Create and join negotiation rooms programmatically
 - Check reputation and contract status via API

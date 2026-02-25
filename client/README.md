@@ -6,7 +6,7 @@ Frontend for Signet (The Room). It provides:
 - deal-room and contract views
 - browser-local attestation verification (`/verify`)
 
-Last updated: 2026-02-19
+Last updated: 2026-02-25
 
 ## Runtime API Routing
 
