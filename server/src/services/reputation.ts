@@ -22,6 +22,19 @@ function ensureReputation(wallet: string): void {
   }
 }
 
+function emptyReputation(wallet: string): Record<string, unknown> {
+  return {
+    wallet_address: wallet,
+    total_negotiations: 0,
+    deals_completed: 0,
+    conditional_deals: 0,
+    avg_rounds: 0,
+    good_faith_score: 50,
+    total_reputation: 0,
+    last_updated: new Date().toISOString(),
+  };
+}
+
 export function updateReputation(wallet: string, event: EventType, rounds?: number): void {
   ensureReputation(wallet);
 
@@ -54,8 +67,8 @@ export function updateReputation(wallet: string, event: EventType, rounds?: numb
 }
 
 export function getReputation(wallet: string): any {
-  ensureReputation(wallet);
-  return get('SELECT * FROM reputation WHERE wallet_address = ?', [wallet]);
+  const rep = get('SELECT * FROM reputation WHERE wallet_address = ?', [wallet]);
+  return rep || emptyReputation(wallet);
 }
 
 const LEADERBOARD_CACHE_MAX = 50;

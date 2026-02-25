@@ -5,7 +5,8 @@ import { route } from './utils';
 const router = Router();
 
 router.get('/leaderboard', route((req, res) => {
-  const limit = parseInt(req.query.limit as string, 10) || 10;
+  const parsed = Number.parseInt(req.query.limit as string, 10);
+  const limit = Number.isFinite(parsed) ? Math.max(1, Math.min(50, parsed)) : 10;
   const leaderboard = getLeaderboard(limit);
   res.json(leaderboard);
 }));

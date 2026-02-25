@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import type { NextFunction, Request, Response } from 'express';
 import { recoverMessageAddress } from 'viem';
-import { badRequest, unauthorized } from '../errors';
+import { badRequest, forbidden, unauthorized } from '../errors';
 
 interface AuthChallenge {
   walletAddress: string;
@@ -72,6 +72,14 @@ function issueSession(walletAddress: string, mode: 'signature' | 'demo') {
 
 export function isDemoModeEnabled(): boolean {
   return envBoolean('AUTH_DEMO_MODE', true);
+}
+
+function isDemoWalletOverrideAllowed(): boolean {
+  const explicit = process.env.AUTH_DEMO_ALLOW_WALLET_OVERRIDE;
+  if (explicit !== undefined) {
+    return explicit.toLowerCase() === 'true';
+  }
+  return process.env.NODE_ENV !== 'production';
 }
 
 export function createAuthChallenge(walletAddress: string): {
@@ -162,9 +170,19 @@ export function createDemoSession(walletAddress?: string): {
     throw unauthorized('Demo mode is disabled');
   }
 
-  const wallet = walletAddress && walletAddress.trim()
-    ? walletAddress
-    : `0x${crypto.randomBytes(20).toString('hex')}`;
+  let wallet: string;
+  if (walletAddress && walletAddress.trim()) {
+    if (!isDemoWalletOverrideAllowed()) {
+      throw forbidden('Demo wallet override is disabled');
+    }
+    if (!isValidEvmWallet(walletAddress.trim())) {
+      throw badRequest('wallet_address must be a valid EVM address');
+    }
+    wallet = normalizeWallet(walletAddress);
+  } else {
+    wallet = `0x${crypto.randomBytes(20).toString('hex')}`;
+  }
+
   return issueSession(wallet, 'demo');
 }
 
