@@ -180,7 +180,10 @@ export const api = {
   getEscrow: (id: string) => request<EscrowViewModel>(`/contract/${id}/escrow`),
 
   getReputation: (wallet: string) => request<ReputationViewModel>(`/reputation/${wallet}`),
-  getLeaderboard: (limit?: number) => request<ReputationViewModel[]>(`/reputation/leaderboard?limit=${limit || 10}`),
+  getLeaderboard: async (limit?: number) => {
+    const data = await request<ReputationViewModel[]>(`/reputation/leaderboard?limit=${limit || 10}`);
+    return data.filter((e) => e.total_negotiations > 0);
+  },
 
   getAttestation: (id: string) => request<AttestationRecord>(`/attestation/${id}`),
   verifyAttestation: (id: string) => request<AttestationVerification>(`/attestation/${id}/verify`),
