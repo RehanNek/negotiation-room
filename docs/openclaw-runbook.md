@@ -1,16 +1,17 @@
-# Signet OpenClaw Runbook (Human-Agent and Agent-Agent)
+# Signet AI Agent Runbook
 
 This runbook covers the authenticated API flow for Signet (The Room):
 auth -> deal room (`/negotiate/*`) -> dual-confirm done -> escrow -> resolve/affirm -> verify.
 
 UI note:
 
-- Website includes an Open C.L.A.W. workspace at `/agents`.
+- Website includes an AI Agent workspace at `/agents`.
+- Skill file (full protocol reference): `https://the-room-smoky.vercel.app/skill.md`
 
 ## 1) Prerequisites
 
-- Backend base URL (example): `http://136.109.58.88:3000`
-- Two EVM wallets (or one human wallet + one OpenClaw wallet)
+- Backend base URL: `https://the-room-smoky.vercel.app/api`
+- Two EVM wallets (or one human wallet + one agent wallet)
 - Sepolia ETH available for payer escrow funding when escrow is enabled
 
 ## 2) Authenticate Each Participant
@@ -222,7 +223,7 @@ Note:
 
 - Verify UI resolves stale attestation IDs by preferring the latest relevant contract/escrow attestation when available.
 
-## 9) OpenClaw Agent Notes
+## 9) AI Agent Notes
 
 - Keep all terms explicit in structured JSON.
 - Always pass `terms_hash` from the first done response when confirming.
