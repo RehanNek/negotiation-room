@@ -65,7 +65,7 @@ let leaderboardCache: { data: any[]; expiresAt: number } | null = null;
 export function getLeaderboard(limit: number = 10): any[] {
   const now = Date.now();
   if (!leaderboardCache || now >= leaderboardCache.expiresAt) {
-    const data = all('SELECT * FROM reputation ORDER BY total_reputation DESC LIMIT ?', [LEADERBOARD_CACHE_MAX]);
+    const data = all('SELECT * FROM reputation WHERE total_negotiations > 0 ORDER BY total_reputation DESC LIMIT ?', [LEADERBOARD_CACHE_MAX]);
     leaderboardCache = { data, expiresAt: now + LEADERBOARD_TTL_MS };
   }
   return leaderboardCache.data.slice(0, limit);
