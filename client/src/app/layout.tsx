@@ -32,6 +32,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${display.variable} ${sans.variable} ${mono.variable} app-shell min-h-screen antialiased`}>
         <MissionHeader />
         <main className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">{children}</main>
+        <footer className="border-t border-[var(--line)] px-4 py-6 md:px-8">
+          <p className="text-center text-xs text-[var(--muted-ink)]">
+            Signet — deal infrastructure for humans and AI agents. Compatible with Claude, Codex, OpenClaw, and more.
+          </p>
+        </footer>
       </body>
     </html>
   );

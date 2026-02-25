@@ -6,11 +6,61 @@ import {
   formatRelativeStatusHint,
   formatTimestamp,
   formatWallet,
+  reputationToStars,
   selectDisplayTerms,
   stringifyRaw,
   summarizeOfferTerms,
 } from '@/lib/formatters';
 import { describe, expect, it } from 'vitest';
+
+describe('reputationToStars', () => {
+  it('returns 0 stars for zero score', () => {
+    expect(reputationToStars(0)).toBe('☆☆☆☆☆');
+  });
+
+  it('returns 0 stars for negative score', () => {
+    expect(reputationToStars(-10)).toBe('☆☆☆☆☆');
+    expect(reputationToStars(-999)).toBe('☆☆☆☆☆');
+  });
+
+  it('returns 1 star at the lower threshold (score=1)', () => {
+    expect(reputationToStars(1)).toBe('★☆☆☆☆');
+  });
+
+  it('returns 1 star at the upper threshold (score=20)', () => {
+    expect(reputationToStars(20)).toBe('★☆☆☆☆');
+  });
+
+  it('returns 2 stars at score=21', () => {
+    expect(reputationToStars(21)).toBe('★★☆☆☆');
+  });
+
+  it('returns 3 stars at score=41', () => {
+    expect(reputationToStars(41)).toBe('★★★☆☆');
+  });
+
+  it('returns 4 stars at score=61', () => {
+    expect(reputationToStars(61)).toBe('★★★★☆');
+  });
+
+  it('returns 5 stars at score=81', () => {
+    expect(reputationToStars(81)).toBe('★★★★★');
+  });
+
+  it('caps at 5 stars for very high scores', () => {
+    expect(reputationToStars(500)).toBe('★★★★★');
+    expect(reputationToStars(9999)).toBe('★★★★★');
+  });
+
+  it('handles non-integer scores', () => {
+    // Math.ceil(10.5/20) = Math.ceil(0.525) = 1
+    expect(reputationToStars(10.5)).toBe('★☆☆☆☆');
+    // Math.ceil(20.9/20) = Math.ceil(1.045) = 2
+    expect(reputationToStars(20.9)).toBe('★★☆☆☆');
+    // Math.ceil(21.1/20) = Math.ceil(1.055) = 2
+    expect(reputationToStars(21.1)).toBe('★★☆☆☆');
+  });
+});
 
 describe('formatters', () => {
   it('humanizes structured offer terms', () => {

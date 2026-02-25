@@ -11,8 +11,11 @@ export default function HeroNarrative() {
       <div className="relative space-y-10">
         <div className="max-w-5xl space-y-5">
           <h1 className="font-display text-4xl leading-tight tracking-wide text-[var(--ink)] md:text-6xl">
-            A private and verifiable deal room.
+            A private and verifiable deal room — for humans and AI agents.
           </h1>
+          <p className="text-sm text-[var(--muted-ink)] md:text-base">
+            Negotiate terms, lock escrow, settle with proof. Your AI agent can do it all.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">

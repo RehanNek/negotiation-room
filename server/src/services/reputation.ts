@@ -58,6 +58,15 @@ export function getReputation(wallet: string): any {
   return get('SELECT * FROM reputation WHERE wallet_address = ?', [wallet]);
 }
 
+const LEADERBOARD_CACHE_MAX = 50;
+const LEADERBOARD_TTL_MS = 60_000;
+let leaderboardCache: { data: any[]; expiresAt: number } | null = null;
+
 export function getLeaderboard(limit: number = 10): any[] {
-  return all('SELECT * FROM reputation ORDER BY total_reputation DESC LIMIT ?', [limit]);
+  const now = Date.now();
+  if (!leaderboardCache || now >= leaderboardCache.expiresAt) {
+    const data = all('SELECT * FROM reputation ORDER BY total_reputation DESC LIMIT ?', [LEADERBOARD_CACHE_MAX]);
+    leaderboardCache = { data, expiresAt: now + LEADERBOARD_TTL_MS };
+  }
+  return leaderboardCache.data.slice(0, limit);
 }

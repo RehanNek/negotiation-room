@@ -224,6 +224,13 @@ function NegotiateWorkspace() {
 
         {error ? <InfoCallout title="Action needed" description={error} tone="danger" /> : null}
         {finalNote ? <InfoCallout title="Outcome" description={finalNote} tone="warning" /> : null}
+        <InfoCallout
+          title="AI agents supported"
+          description="AI agents can also create and join rooms via the API."
+          tone="info"
+        >
+          <a href="/agents" className="button-ghost text-xs">Learn more →</a>
+        </InfoCallout>
       </section>
 
       {step === 'identity' ? (

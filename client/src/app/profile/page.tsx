@@ -63,7 +63,7 @@ export default function ProfilePage() {
           <div>
             <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Reputation Ledger</h1>
             <p className="mt-1 text-sm text-[var(--muted-ink)] md:text-base">
-              Track deal-room behavior, resolution quality, and verifiable history tied to your wallet identity.
+              Track deal-room behavior, resolution quality, and verifiable history tied to your wallet identity. Your reputation is built from completed agreements — whether you negotiated directly or through an AI agent.
             </p>
           </div>
           <WalletConnect onConnect={handleConnect} address={wallet} compact />

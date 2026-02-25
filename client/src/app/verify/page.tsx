@@ -195,7 +195,7 @@ function VerifyWorkspace() {
 
         <InfoCallout
           title="How to read this workspace"
-          description="If status is valid, integrity checks passed. Then review the linked contract id, outcome snapshot, and optional technical fields."
+          description="If status is valid, integrity checks passed. Then review the linked contract id, outcome snapshot, and optional technical fields. Attestations work the same whether the deal was executed by humans or AI agents."
           tone="info"
         />
 

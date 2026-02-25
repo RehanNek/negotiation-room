@@ -277,6 +277,11 @@ export function buildReadableContractSummary(dealType: DealType, summary: string
   return cleaned;
 }
 
+export function reputationToStars(score: number): string {
+  const filled = Math.min(5, Math.max(0, Math.ceil(Math.max(0, score) / 20)));
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled);
+}
+
 export function formatWallet(wallet: string | null | undefined, start: number = 6, end: number = 4): string {
   if (!wallet) return 'Unknown Wallet';
   if (wallet.length <= start + end) return wallet;

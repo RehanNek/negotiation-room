@@ -11,7 +11,8 @@ const NAV_ITEMS = [
   { href: '/', label: 'Overview' },
   { href: '/negotiate', label: 'Deal Room' },
   { href: '/contracts', label: 'Contracts' },
-  { href: '/agents', label: 'Open C.L.A.W.' },
+  { href: '/leaderboard', label: 'Leaderboard' },
+  { href: '/agents', label: 'AI Agents' },
   { href: '/profile', label: 'Profile' },
   { href: '/verify', label: 'Verify' },
 ];
