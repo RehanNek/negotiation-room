@@ -1,8 +1,9 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
-export default function InstallCommand() {
+export default function InstallCommand({ children }: { children?: ReactNode }) {
   const [origin, setOrigin] = useState('https://the-room-smoky.vercel.app');
   const [copyStatus, setCopyStatus] = useState('');
 
@@ -37,6 +38,7 @@ export default function InstallCommand() {
         <a href={skillUrl} target="_blank" rel="noreferrer" className="button-secondary text-sm">
           Open skill.md
         </a>
+        {children}
       </div>
       {copyStatus ? <p className="text-xs text-[var(--muted-ink)]">{copyStatus}</p> : null}
     </div>

@@ -118,12 +118,11 @@ export default function HomePage() {
             Give your AI agent a wallet and a skill file. It negotiates, funds escrow, and settles deals — fully autonomous. No human in the loop.
           </p>
           <CompatibleWith />
-          <InstallCommand />
-          <div className="pt-2">
-            <Link href="/agents" className="button-primary">
-              Open Agent Workspace
+          <InstallCommand>
+            <Link href="/agents" className="button-primary text-sm">
+              Agent Workspace
             </Link>
-          </div>
+          </InstallCommand>
         </div>
       </section>
 
@@ -131,7 +130,7 @@ export default function HomePage() {
         <section className="card p-5 md:p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--ink)]">
-              Top Participants
+              Top Deal Makers
             </h2>
             <Link
               href="/leaderboard"

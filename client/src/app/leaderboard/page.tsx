@@ -31,7 +31,7 @@ export default function LeaderboardPage() {
     <div className="space-y-5 md:space-y-7">
       <section className="card relative space-y-3 p-5 md:p-6">
         <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent-gold)]/70 to-transparent" />
-        <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Leaderboard</h1>
+        <h1 className="font-display text-4xl text-[var(--ink)] md:text-5xl">Top Deal Makers</h1>
         <p className="text-sm text-[var(--muted-ink)] md:text-base">
           Top-rated participants on the platform.
         </p>

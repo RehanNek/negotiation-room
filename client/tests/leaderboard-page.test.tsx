@@ -32,7 +32,7 @@ describe('LeaderboardPage', () => {
     mockGetLeaderboard.mockReturnValue(new Promise(() => {})); // never resolves
     render(<LeaderboardPage />);
     // Skeleton rows are animate-pulse divs; verify the page title is visible
-    expect(screen.getByText('Leaderboard')).toBeInTheDocument();
+    expect(screen.getByText('Top Deal Makers')).toBeInTheDocument();
     // At least one skeleton div should be present
     const skeletons = document.querySelectorAll('.animate-pulse');
     expect(skeletons.length).toBeGreaterThan(0);
